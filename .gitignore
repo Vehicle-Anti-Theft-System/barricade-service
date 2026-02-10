@@ -1,0 +1,45 @@
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# ANPR caches / hidden folder
+.anpr-service/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Model files (large binary files)
+*.pt
+yolov8n.pt
+license_plate_detector.pt
+
+# Keep uv.lock (it should be committed)
+# uv.lock
+
+# Output files
+*-Output.jpg
+*.jpg-Output.jpg
