@@ -1,7 +1,7 @@
 [project]
 name = "barricade-service"
 version = "0.1.0"
-description = "Add your description here"
+description = "Automatic Number Plate Recognition (ANPR) service for detecting vehicles, tracking them, and extracting license plate information"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,5 +11,6 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pandas>=3.0.0",
     "scikit-image>=0.26.0",
+    "scipy>=1.11.0",
     "ultralytics>=8.4.14",
 ]

@@ -1,22 +1,32 @@
 # Barricade Service
 
-An Automatic Number Plate Recognition (ANPR) system built with Python that detects vehicles, tracks them across frames, and extracts license plate information from images and video streams.
+A comprehensive security and access control service system built with Python. Barricade Service provides automated vehicle and license plate recognition capabilities for security applications.
 
-## Features
+## Overview
 
-- 🚗 **Vehicle Detection**: Detects cars, motorcycles, and buses using YOLOv8
-- 📋 **License Plate Detection**: Identifies license plates using a custom YOLO model
-- 🔄 **Vehicle Tracking**: Tracks vehicles across video frames using SORT (Simple Online and Realtime Tracking)
-- 🔤 **OCR Recognition**: Extracts license plate text using EasyOCR
-- 📝 **Format Validation**: Validates and formats license plate text according to standard formats (9 or 10 characters)
-- 🎥 **Video Processing**: Supports both image and video input sources
+Barricade Service is a modular system designed for security and access control applications. It integrates multiple services to provide automated vehicle detection, tracking, and license plate recognition.
 
-## Requirements
+## Components
+
+### ANPR Service
+
+The Automatic Number Plate Recognition (ANPR) service is the core component of Barricade Service. It provides:
+
+- Vehicle detection and tracking
+- License plate detection and recognition
+- Image and video processing
+- Live camera feed processing
+
+For detailed documentation, see [anpr_service/README.md](anpr_service/README.md).
+
+## Installation
+
+### Requirements
 
 - Python >= 3.12
 - CUDA-capable GPU (optional, for faster processing)
 
-## Installation
+### Setup
 
 1. Clone the repository:
 ```bash
@@ -34,92 +44,90 @@ Or install using pip:
 pip install -e .
 ```
 
+## Quick Start
+
+### Using the ANPR Service
+
+```python
+from anpr_service import ANPRService, ANPRConfig
+
+# Initialize service
+service = ANPRService()
+
+# Process an image
+processed_frame, results = service.process_image('image.jpg')
+
+# Print results
+for result in results:
+    if result.license_plate_text:
+        print(result.license_plate_text)
+```
+
+### Running the Main Application
+
+```bash
+python main.py
+```
+
+This will process `img4.jpg` and display the detection results.
+
 ## Project Structure
 
 ```
 barricade-service/
-├── anpr-service/
-│   ├── ANPR.py              # Main ANPR processing logic
-│   ├── utility.py           # Utility functions for OCR and vehicle matching
-│   ├── license_plate_detector.pt  # YOLO model for license plate detection
-│   ├── yolov8n.pt           # YOLO model for vehicle detection
-│   └── sort/                # SORT tracking implementation
-├── main.py                  # Entry point
-├── pyproject.toml           # Project configuration and dependencies
-└── README.md
+├── anpr_service/           # ANPR service module
+│   ├── README.md           # ANPR service documentation
+│   ├── __init__.py
+│   ├── anpr_service.py     # Main ANPR service class
+│   ├── utility.py          # Utility functions
+│   ├── sort/               # SORT tracking implementation
+│   └── examples/           # Usage examples
+├── main.py                 # Main application entry point
+├── pyproject.toml          # Project configuration
+└── README.md               # This file
 ```
-
-## Usage
-
-### Basic Usage
-
-Run the ANPR service on an image or video:
-
-```bash
-python anpr-service/ANPR.py
-```
-
-The script will:
-1. Load the input file (currently set to `img4.jpg`)
-2. Detect vehicles in the frame
-3. Track vehicles across frames
-4. Detect and extract license plate information
-5. Display results and save output image
-
-### Configuration
-
-To process a different file, modify the `flName` variable in `ANPR.py`:
-
-```python
-flName = 'your_image.jpg'  # or 'your_video.mp4'
-```
-
-For live camera feed, uncomment:
-```python
-cap = cv2.VideoCapture(0)  # Use webcam
-```
-
-## How It Works
-
-1. **Vehicle Detection**: Uses YOLOv8 to detect vehicles (cars, motorcycles, buses) in each frame
-2. **Vehicle Tracking**: SORT algorithm tracks vehicles across frames and assigns unique IDs
-3. **License Plate Detection**: Custom YOLO model detects license plates in the frame
-4. **Plate-Vehicle Matching**: Associates detected license plates with tracked vehicles
-5. **OCR Processing**: EasyOCR extracts text from cropped license plate images
-6. **Text Formatting**: Validates and formats license plate text according to standard formats
 
 ## Dependencies
 
-- **easyocr** (>=1.7.2): Optical Character Recognition
-- **filterpy** (>=1.4.5): Kalman filtering for tracking
-- **numpy** (>=2.4.2): Numerical operations
-- **opencv-python** (>=4.13.0.92): Image and video processing
-- **pandas** (>=3.0.0): Data manipulation
-- **scikit-image** (>=0.26.0): Image processing utilities
-- **ultralytics** (>=8.4.14): YOLO model inference
+See `pyproject.toml` for the complete list of dependencies. Key dependencies include:
 
-## Model Files
+- **ultralytics**: YOLO model inference
+- **easyocr**: Optical Character Recognition
+- **opencv-python**: Image and video processing
+- **filterpy**: Kalman filtering for tracking
+- **numpy**: Numerical operations
+- **scipy**: Scientific computing
 
-The following model files are required:
-- `yolov8n.pt`: Pre-trained YOLOv8 nano model for vehicle detection
-- `license_plate_detector.pt`: Custom trained YOLO model for license plate detection
+## Usage
 
-Ensure these files are present in the `anpr-service/` directory before running the application.
+### Basic Image Processing
 
-## License Plate Format
+```python
+from anpr_service import ANPRService
 
-The system supports license plates with:
-- **9 characters**: Format `XX##X####` (2 letters, 2 numbers, 1 letter, 4 numbers)
-- **10 characters**: Format `XX##XX####` (2 letters, 2 numbers, 2 letters, 4 numbers)
+service = ANPRService()
+processed_frame, results = service.process_image('image.jpg')
+```
 
-The system includes character correction mappings to handle common OCR errors (e.g., 'O' → '0', 'I' → '1').
+### Video Processing
 
-## Output
+```python
+from anpr_service import ANPRService
 
-The processed frame is saved as `{input_filename}-Output.jpg` with:
-- Vehicle bounding boxes (blue)
-- License plate bounding boxes (red)
-- Detected license plate text overlaid on the frame
+service = ANPRService()
+all_results = service.process_video('video.mp4', output_path='output.mp4')
+```
+
+### Camera Feed
+
+```python
+from anpr_service import ANPRService
+
+service = ANPRService()
+service.process_camera(camera_index=0)  # Press 'q' to quit
+```
+
+For more detailed usage examples and API documentation, see [anpr_service/README.md](anpr_service/README.md).
 
 ## Development
 
@@ -128,6 +136,14 @@ The processed frame is saved as `{input_filename}-Output.jpg` with:
 ```bash
 python main.py
 ```
+
+### Project Architecture
+
+Barricade Service follows a modular architecture:
+
+- **Service Modules**: Independent, reusable service components
+- **Main Application**: Entry point that orchestrates services
+- **Configuration**: Centralized configuration management
 
 ## Contributing
 
@@ -139,6 +155,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Acknowledgments
 
-- [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics) for object detection
-- [SORT](https://github.com/abewley/sort) for multi-object tracking
-- [EasyOCR](https://github.com/JaidedAI/EasyOCR) for optical character recognition
+- [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
+- [SORT](https://github.com/abewley/sort)
+- [EasyOCR](https://github.com/JaidedAI/EasyOCR)
