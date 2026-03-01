@@ -66,14 +66,39 @@ body {
 .header-center strong { color: var(--success-green); font-weight: 800; }
 .header-divider { opacity: 0.4; margin: 0 4px; }
 
-.online-dot {
+.online-dot,
+.status-dot {
   width: 8px; height: 8px;
-  background: var(--success-green);
   border-radius: 50%;
   display: inline-block;
+}
+.status-dot.online {
+  background: var(--success-green);
   box-shadow: 0 0 8px var(--success-green);
   animation: pulse-dot 2s infinite;
 }
+.status-dot.offline {
+  background: var(--warn-orange);
+  box-shadow: 0 0 6px var(--warn-orange);
+}
+.online-dot {
+  background: var(--success-green);
+  box-shadow: 0 0 8px var(--success-green);
+  animation: pulse-dot 2s infinite;
+}
+
+.simulate-btn {
+  margin-left: 12px;
+  background: var(--warn-orange);
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.simulate-btn:hover { opacity: 0.9; }
 
 @keyframes pulse-dot {
   0%, 100% { box-shadow: 0 0 6px var(--success-green); }
@@ -453,8 +478,41 @@ body {
   font-size: 9px; font-weight: 800;
   width: 15px; height: 15px;
   border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-left: 4px;
+}
+
+.fail-badge {
+  background: var(--error-red);
+  color: white;
+  font-size: 11px; font-weight: 800;
+  width: 22px; height: 22px;
+  border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
 }
+.info-error { color: var(--error-red); font-size: 0.75rem; font-weight: 600; }
+
+.action-buttons-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.action-btn {
+  flex: 1;
+  min-width: 120px;
+  background: #475569;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.action-btn:hover:not(:disabled) { background: #64748b; }
+.action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── GATE CARD ── */
 .gate-card {
