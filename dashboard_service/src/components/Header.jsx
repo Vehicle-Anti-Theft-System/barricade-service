@@ -1,9 +1,11 @@
 import { IconButton } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
-import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import { RFID_STATES } from "../constants";
 
-export function Header({ wsConnected, onSimulateDemo }) {
+export function Header({ wsConnected, onStartVerification, user, onLogout }) {
+  const initials = user?.name
+    ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
+    : "?";
+
   return (
     <div className="header">
       <IconButton size="small" sx={{ color: "white" }}>
@@ -13,21 +15,27 @@ export function Header({ wsConnected, onSimulateDemo }) {
         <span className={`status-dot ${wsConnected ? "online" : "offline"}`} />
         Status: <strong>{wsConnected ? "ONLINE" : "DEMO"}</strong>
         <span className="header-divider">|</span>
-        Checkpoint: North Gate
-        {!wsConnected && onSimulateDemo && (
+        Checkpoint: {user?.checkpoint || "North Gate"}
+        {onStartVerification && (
           <button
             className="simulate-btn"
-            onClick={onSimulateDemo}
+            onClick={onStartVerification}
             type="button"
-            title="Simulate RFID scan (demo mode)"
+            title={wsConnected ? "Start verification (API Agent)" : "Simulate verification (demo)"}
           >
-            Simulate Verification
+            {wsConnected ? "Start Verification" : "Simulate Verification"}
           </button>
         )}
       </div>
-      <IconButton size="small" sx={{ color: "white" }}>
-        <PersonOutlineIcon />
-      </IconButton>
+      <div className="user-info">
+        <div className="user-avatar">{initials}</div>
+        <span>{user?.name || "Guard"}</span>
+        {onLogout && (
+          <button className="logout-btn" onClick={onLogout} type="button">
+            Logout
+          </button>
+        )}
+      </div>
     </div>
   );
 }

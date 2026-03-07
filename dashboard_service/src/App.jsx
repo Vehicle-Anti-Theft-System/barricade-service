@@ -9,9 +9,11 @@ import {
   DriverCard,
   GateControl,
   ManualPlateEntryDialog,
+  LoginPage,
 } from "./components";
 import { useVerificationState } from "./hooks/useVerificationState";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useAuth } from "./hooks/useAuth";
 import { ANPR_STATES } from "./constants";
 
 const theme = createTheme({
@@ -23,6 +25,7 @@ const theme = createTheme({
 });
 
 export default function App() {
+  const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
   const [state, dispatch] = useVerificationState();
   const [autoOpen, setAutoOpen] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
@@ -30,13 +33,21 @@ export default function App() {
   const [rescanning, setRescanning] = useState(false);
   const wsRef = useRef(null);
 
-  const { simulateDemoFlow } = useWebSocket(dispatch, {
+  const { simulateDemoFlow, send } = useWebSocket(dispatch, {
     onConnect: () => setWsConnected(true),
     onDisconnect: () => setWsConnected(false),
     enableDemoMode: true,
   });
 
-  wsRef.current = { simulateDemoFlow };
+  function handleStartVerification() {
+    if (wsConnected && send) {
+      send({ event: "simulate" });
+    } else {
+      simulateDemoFlow?.();
+    }
+  }
+
+  wsRef.current = { simulateDemoFlow: handleStartVerification };
 
   // Auto-open gate when verification complete and autoOpen is on
   useEffect(() => {
@@ -69,6 +80,7 @@ export default function App() {
   function handleRescan() {
     setRescanning(true);
     dispatch({ type: "session_reset" });
+    if (wsConnected && send) send({ event: "session_reset" });
     setTimeout(() => setRescanning(false), 300);
   }
 
@@ -81,13 +93,28 @@ export default function App() {
     dispatch({ type: "gate_open_click" });
   }
 
+  if (!isAuthenticated) {
+    return (
+      <ThemeProvider theme={theme}>
+        <LoginPage
+          onLogin={login}
+          loading={authLoading}
+          error={authError}
+          onClearError={clearError}
+        />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <div className="screen">
         <div className="main-container">
           <Header
             wsConnected={wsConnected}
-            onSimulateDemo={() => wsRef.current?.simulateDemoFlow()}
+            onStartVerification={handleStartVerification}
+            user={user}
+            onLogout={logout}
           />
 
           <div className="content">

@@ -5,6 +5,7 @@ description = "Automatic Number Plate Recognition (ANPR) service for detecting v
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "api-agent",
     "easyocr>=1.7.2",
     "filterpy>=1.4.5",
     "numpy>=2.4.2",
@@ -14,3 +15,11 @@ dependencies = [
     "scipy>=1.11.0",
     "ultralytics>=8.4.14",
 ]
+
+[tool.uv.workspace]
+members = [
+    "api_agent",
+]
+
+[tool.uv.sources]
+api-agent = { workspace = true }

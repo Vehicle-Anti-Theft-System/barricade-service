@@ -10,12 +10,14 @@
 |-----------|--------|------|
 | **ANPR Service** | ✅ Library implemented | `anpr_service/` — YOLOv8 + EasyOCR + SORT. Supports `process_image`, `process_video`, `process_camera`, `capture_and_process_frame`. No HTTP/FastAPI server yet. |
 | **React Dashboard** | ✅ Implemented | `dashboard_service/` — Vite + React + Material UI v5. Full verification UI per spec. |
+| **Employee login** | ✅ Implemented | Login page (Employee ID + password). `useAuth` hook, localStorage session. Header shows user + Logout. Demo: any ID + password `barricade123`. |
 | **Frontend state machine** | ✅ Implemented | `useReducer` with RFID / ANPR / Fingerprint states per CONTEXT spec. |
-| **WebSocket integration** | ✅ Implemented | `useWebSocket` hook connects to `ws://localhost:8080/ws`. Demo mode with "Simulate Verification" when API Agent is offline. |
+| **WebSocket integration** | ✅ Implemented | `useWebSocket` hook connects to `ws://localhost:8080/ws`. When connected, "Start Verification" sends to API Agent; when offline, local "Simulate Verification". |
+| **API Agent** | ✅ Implemented | `api_agent/` — FastAPI + WebSocket at `/ws`, routes: `/`, `/health`, `/ws`. Mock verification flow (RFID → ANPR → Fingerprint → gate). Commands: simulate, session_reset, manual_plate, open_gate. |
 | **Camera feed** | ✅ Implemented | MJPEG at `http://localhost:8001/video_feed` with fallback placeholder when stream unavailable. |
 | **Session log panel** | ✅ Implemented | Live append, auto-scroll. |
 | **Status badges** | ✅ Implemented | RFID, ANPR, Fingerprint with full state set. |
-| **RESCAN button** | ✅ Implemented | Resets session. |
+| **RESCAN button** | ✅ Implemented | Resets session; sends `session_reset` to API Agent when connected. |
 | **MANUAL PLATE ENTRY** | ✅ Implemented | Dialog + flow when ANPR needs manual input. |
 | **Gate control** | ✅ Implemented | Auto-open toggle, Open Barricade button (disabled until all verified). |
 | **Main entry** | ✅ Implemented | `main.py` — processes static image via ANPR. |
@@ -24,7 +26,6 @@
 
 | Component | Status | Notes |
 |-----------|--------|------|
-| **API Agent** | ❌ | FastAPI + WebSocket server to orchestrate RFID, ANPR, Fingerprint. |
 | **ANPR HTTP server** | ❌ | FastAPI wrapper with MJPEG `/video_feed` and snapshot endpoint. |
 | **RFID Service** | ❌ | Python service polling RFID hardware. |
 | **Fingerprint Service** | ❌ | Python service wrapping fingerprint scanner SDK. |
@@ -50,7 +51,7 @@ There is currently no automated way for mine sites to verify that the correct dr
 
 A **3-factor biometric + identity verification system** installed at mine site barricade entry points.
 
-Before any truck can enter a mine site, three things must match a pre-registered order in the central database:
+Before any truck can enter a mine site, three things; must match a pre-registered order in the central database:
 
 1. **RFID** — hidden tag on the truck (like FASTag), driver is unaware of it
 2. **ANPR** — license plate recognition via camera (YOLOv8 + EasyOCR)
@@ -200,8 +201,8 @@ BARRICADE LOCAL SYSTEM (one per entry point)
 ├── ANPR Service          ⚠️ Library done, HTTP server not built
 │                         Needs: FastAPI + MJPEG /video_feed
 ├── Fingerprint Service   ❌ NOT BUILT — Python, hardware SDK
-├── API Agent             ❌ NOT BUILT — FastAPI + WebSocket
-└── React Dashboard       ✅ DONE — Vite + React + MUI v5
+├── API Agent             ✅ DONE — FastAPI + WebSocket (core/, routes/, services/)
+└── React Dashboard       ✅ DONE — Vite + React + MUI v5, login gate, verification UI
 
 CENTRAL BACKEND (not built)
 ├── Verification Service  ❌
@@ -215,8 +216,9 @@ CENTRAL BACKEND (not built)
 
 | From | To | Protocol | Status |
 |------|----|----------|--------|
-| Dashboard | API Agent | WebSocket | ✅ Hook ready, API Agent missing |
+| Dashboard | API Agent | WebSocket | ✅ Connected at ws://localhost:8080/ws |
 | Dashboard | ANPR Service | HTTP MJPEG | ✅ URL wired, ANPR server missing |
+| API Agent | Dashboard | WebSocket | ✅ Events per spec (rfid_check_result, anpr_result, etc.) |
 | API Agent | Local services | HTTP REST | ❌ |
 | API Agent | Backend | HTTPS REST | ❌ |
 
@@ -227,6 +229,8 @@ CENTRAL BACKEND (not built)
 States are in `dashboard_service/src/constants.js` and `useVerificationState.js`.
 
 ### Dashboard Layout
+
+Login gate: employee signs in (Employee ID + password) before seeing the dashboard. Session stored in localStorage; header shows user name and Logout.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -360,11 +364,12 @@ See original spec. Schema not yet migrated.
 ### Phase 1 — Core Local Services
 - [x] ANPR library (YOLOv8 + EasyOCR + SORT)
 - [x] React dashboard (full UI per spec)
+- [x] Employee login page (useAuth, LoginPage, header user + logout)
 - [x] WebSocket hook + demo mode
 - [x] Camera feed (MJPEG URL + fallback)
 - [x] Status panel, session log, RESCAN, manual plate entry
 - [x] Gate control + auto-open toggle
-- [ ] **API Agent** (FastAPI + WebSocket)
+- [x] **API Agent** (FastAPI + WebSocket, routes: /, /health, /ws; mock verification flow)
 - [ ] **ANPR HTTP server** (FastAPI + `/video_feed` MJPEG + snapshot endpoint)
 - [ ] **RFID service** (Python, serial/SDK)
 - [ ] **Fingerprint service** (Python, hardware SDK)
@@ -378,7 +383,7 @@ See original spec. Schema not yet migrated.
 - [ ] End-to-end: RFID → ANPR → Fingerprint → response
 
 ### Phase 3 — Integration & Polish
-- [ ] Connect real WebSocket (API Agent)
+- [x] Connect real WebSocket (API Agent) — dashboard uses it when online
 - [ ] Connect real MJPEG stream (ANPR server)
 - [ ] ANPR 3x retry logic in ANPR service
 - [ ] Remove demo mode or keep as fallback
@@ -420,6 +425,7 @@ See original spec. Schema not yet migrated.
 4. **Guard cannot override** — Open Barricade disabled until all 3 factors validate.
 5. **3x ANPR retry + manual fallback** — If OCR fails 3x, guard enters plate manually.
 6. **Demo mode** — When API Agent is unreachable, "Simulate Verification" runs a mock flow for UI testing.
+7. **Employee login** — Dashboard is gated; guards sign in with Employee ID + password (session in localStorage). Header shows user and Logout.
 
 ---
 
@@ -432,10 +438,18 @@ barricade-service/
 │   ├── utility.py
 │   ├── sort/
 │   └── examples/
+├── api_agent/              ✅ FastAPI + WebSocket orchestrator
+│   ├── core/               events.py, connection.py
+│   ├── routes/             root.py, health.py, ws.py
+│   ├── services/           verification.py (mock flow)
+│   ├── app.py
+│   ├── main.py
+│   └── pyproject.toml
 ├── dashboard_service/      ✅ React dashboard
 │   └── src/
-│       ├── components/     Header, CameraFeed, SessionLog, StatusBadge, etc.
-│       ├── hooks/          useVerificationState, useWebSocket
+│       ├── components/     Header, CameraFeed, SessionLog, StatusBadge,
+│       │                   GateControl, ManualPlateEntryDialog, LoginPage
+│       ├── hooks/          useVerificationState, useWebSocket, useAuth
 │       ├── constants.js
 │       └── App.jsx
 ├── main.py                 ✅ Entry point (processes static image)
