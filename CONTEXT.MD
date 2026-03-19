@@ -1,6 +1,6 @@
 # Mine Site Anti-Theft Vehicle Detection System
 
-## Implementation Status (as of latest update)
+## Implementation Status (as of 2026-03-18)
 
 > Use this file to restore full project context in any future conversation.
 
@@ -8,6 +8,7 @@
 
 | Component | Status | Notes |
 |-----------|--------|------|
+| **Alert employee tracking** | ✅ Implemented | Dashboard sends `employee_id` with Start Verification (simulate); API Agent accepts and passes to mock flow (for when backend is wired). Backend stores `employee_id` on alerts — see `backend-service/CONTEXT.MD`. |
 | **ANPR Service** | ✅ Library implemented | `anpr_service/` — YOLOv8 + EasyOCR + SORT. Supports `process_image`, `process_video`, `process_camera`, `capture_and_process_frame`. No HTTP/FastAPI server yet. |
 | **React Dashboard** | ✅ Implemented | `dashboard_service/` — Vite + React + Material UI v5. Full verification UI per spec. |
 | **Employee login** | ✅ Implemented | Login page (Employee ID + password). `useAuth` hook, localStorage session. Header shows user + Logout. Demo: any ID + password `barricade123`. |
@@ -21,6 +22,7 @@
 | **MANUAL PLATE ENTRY** | ✅ Implemented | Dialog + flow when ANPR needs manual input. |
 | **Gate control** | ✅ Implemented | Auto-open toggle, Open Barricade button (disabled until all verified). |
 | **Main entry** | ✅ Implemented | `main.py` — processes static image via ANPR. |
+| **Backend service** | ✅ Implemented | Central backend in `backend-service/` — Verification, Data/Query, Alert services, PostgreSQL, Alembic. Alerts include `employee_id` when provided. |
 
 ### ❌ NOT DONE (what's left)
 
@@ -29,8 +31,7 @@
 | **ANPR HTTP server** | ❌ | FastAPI wrapper with MJPEG `/video_feed` and snapshot endpoint. |
 | **RFID Service** | ❌ | Python service polling RFID hardware. |
 | **Fingerprint Service** | ❌ | Python service wrapping fingerprint scanner SDK. |
-| **Backend services** | ❌ | Verification, Data/Query, Alert services. |
-| **PostgreSQL schema** | ❌ | Migrations for trucks, drivers, orders, entry_logs, alerts, barricades, sites. |
+| **Wire API Agent → Backend** | ❌ | API Agent currently uses mock flow; needs to call backend REST endpoints and pass `employee_id`. |
 | **Admin panel** | ❌ | Order registration, driver/truck management. |
 
 ---
@@ -204,11 +205,11 @@ BARRICADE LOCAL SYSTEM (one per entry point)
 ├── API Agent             ✅ DONE — FastAPI + WebSocket (core/, routes/, services/)
 └── React Dashboard       ✅ DONE — Vite + React + MUI v5, login gate, verification UI
 
-CENTRAL BACKEND (not built)
-├── Verification Service  ❌
-├── Data/Query Service    ❌
-├── Alert Service         ❌
-├── Central Database      ❌ PostgreSQL
+CENTRAL BACKEND (backend-service/)
+├── Verification Service  ✅ 3-factor check; accepts optional employee_id
+├── Data/Query Service    ✅ Full CRUD
+├── Alert Service         ✅ Auto-created on failures; stores employee_id
+├── Central Database      ✅ PostgreSQL, Alembic
 └── Admin Panel           ❌
 ```
 
@@ -220,7 +221,7 @@ CENTRAL BACKEND (not built)
 | Dashboard | ANPR Service | HTTP MJPEG | ✅ URL wired, ANPR server missing |
 | API Agent | Dashboard | WebSocket | ✅ Events per spec (rfid_check_result, anpr_result, etc.) |
 | API Agent | Local services | HTTP REST | ❌ |
-| API Agent | Backend | HTTPS REST | ❌ |
+| API Agent | Backend | HTTPS REST | ❌ (backend ready; agent still mock)
 
 ---
 
@@ -303,7 +304,9 @@ Login gate: employee signs in (Employee ID + password) before seeing the dashboa
 
 ---
 
-## 6. Alert System (spec only)
+## 6. Alert System
+
+Backend (`backend-service/`) auto-creates alerts on verification failures. Alerts store `employee_id` (logged-in barricade employee) when provided for investigation.
 
 | Alert Type | Trigger |
 |------------|---------|
@@ -316,7 +319,9 @@ Login gate: employee signs in (Employee ID + password) before seeing the dashboa
 
 ---
 
-## 7. Database Schema (spec only, not implemented)
+## 7. Database Schema
+
+Full schema (7 tables, UUID PKs) is implemented in `backend-service/` with Alembic. Alerts table includes `employee_id` (VARCHAR 100, nullable) for the logged-in barricade employee. Summary:
 
 ### trucks
 | Column | Type |
@@ -355,7 +360,7 @@ Login gate: employee signs in (Employee ID + password) before seeing the dashboa
 | created_by | UUID FK |
 
 ### entry_logs, alerts, barricades, sites
-See original spec. Schema not yet migrated.
+See `backend-service/CONTEXT.MD` for full schema. `alerts` includes `employee_id` for investigation.
 
 ---
 
@@ -375,11 +380,9 @@ See original spec. Schema not yet migrated.
 - [ ] **Fingerprint service** (Python, hardware SDK)
 
 ### Phase 2 — Backend & Verification
-- [ ] PostgreSQL schema + migrations
-- [ ] Data/Query Service (CRUD REST API)
-- [ ] Verification Service (3-factor check endpoint)
-- [ ] Seed DB with test data
-- [ ] Wire API Agent → Backend
+- [x] Backend (in `backend-service/`): PostgreSQL schema + Alembic, CRUD, Verification Service, Alert Service, seed data
+- [x] Alert employee tracking (dashboard sends `employee_id`; backend stores on alerts)
+- [ ] Wire API Agent → Backend (pass `employee_id` in verify requests)
 - [ ] End-to-end: RFID → ANPR → Fingerprint → response
 
 ### Phase 3 — Integration & Polish
@@ -412,8 +415,8 @@ See original spec. Schema not yet migrated.
 | Fingerprint Service | Python, hardware scanner SDK |
 | API Agent | Python, FastAPI, websockets |
 | React Dashboard | React 19, Vite, Material UI v5, WebSocket |
-| Backend | Python FastAPI or Node.js (TBD) |
-| Database | PostgreSQL |
+| Backend | Python, FastAPI (in `backend-service/`) |
+| Database | PostgreSQL 16 |
 
 ---
 
@@ -426,6 +429,7 @@ See original spec. Schema not yet migrated.
 5. **3x ANPR retry + manual fallback** — If OCR fails 3x, guard enters plate manually.
 6. **Demo mode** — When API Agent is unreachable, "Simulate Verification" runs a mock flow for UI testing.
 7. **Employee login** — Dashboard is gated; guards sign in with Employee ID + password (session in localStorage). Header shows user and Logout.
+8. **Alert employee tracking** — Dashboard sends logged-in `employee_id` with Start Verification; backend stores it on alerts when verification fails (investigation/accountability).
 
 ---
 

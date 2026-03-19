@@ -1,6 +1,6 @@
 # API Agent — Context
 
-> Use this file to restore full context for the API Agent in any future conversation.
+> Use this file to restore full context for the API Agent in any future conversation. (Updated 2026-03-18.)
 
 ## Role
 
@@ -28,6 +28,7 @@ Until RFID/ANPR/Fingerprint and the backend exist, the Agent runs a **mock verif
 | **Connection manager** | Single manager; broadcast for `session_reset`. |
 | **Mock verification** | `services/verification.py`: RFID → ANPR → Fingerprint → gate_decision. |
 | **Commands handled** | `simulate` / `start_verification`, `session_reset`, `manual_plate`, `open_gate`. |
+| **Employee ID in commands** | Dashboard sends `employee_id` with simulate/start_verification; agent accepts and passes to `run_mock_verification(..., employee_id=...)` for when backend is wired (backend stores it on alerts). |
 
 ### ❌ Not done
 
@@ -99,7 +100,7 @@ Every message is JSON with an `event` field. Dashboard dispatches `{ type: msg.e
 | `fingerprint_scanning`| Fingerprint read started. |
 | `fingerprint_result` | Driver result: `status`, `driver`, `driver_id`, `fingerprint_id`, `all_clear` or `detail`. |
 | `gate_decision`      | `open`, `method` (e.g. `"auto"`, `"manual"`). |
-| `alert_raised`       | `type`, `detail`. |
+| `alert_raised`       | `type`, `detail`; optional `employee_id` when backend is wired. |
 
 ### Inbound (Dashboard → API Agent)
 
@@ -107,7 +108,7 @@ Dashboard sends JSON with `event` or `command`.
 
 | event / command      | Payload | Agent behavior |
 |----------------------|---------|----------------|
-| `simulate` / `start_verification` | optional `auto_open` (default true) | Run mock flow; send event sequence; optionally send `gate_decision`. |
+| `simulate` / `start_verification` | optional `auto_open` (default true), optional `employee_id` (logged-in barricade employee) | Run mock flow; pass `employee_id` to verification (for backend when wired); send event sequence; optionally send `gate_decision`. |
 | `session_reset`      | —       | Broadcast `session_reset` to all clients. |
 | `manual_plate`       | `plate` | Send `anpr_result` (VALIDATED, that plate) then `fingerprint_scanning`. |
 | `open_gate`          | —       | Send `gate_decision` (open, method=manual). |

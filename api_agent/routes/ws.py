@@ -39,7 +39,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
             if event in (CMD_SIMULATE, CMD_START_VERIFICATION):
                 auto_open = data.get("auto_open", True)
-                await run_mock_verification(ws, auto_open=auto_open)
+                employee_id = data.get("employee_id") or None
+                await run_mock_verification(ws, auto_open=auto_open, employee_id=employee_id)
 
             elif event == CMD_SESSION_RESET:
                 await manager.broadcast(event_message(EVENT_SESSION_RESET))

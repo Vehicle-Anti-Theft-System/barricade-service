@@ -41,7 +41,7 @@ export default function App() {
 
   function handleStartVerification() {
     if (wsConnected && send) {
-      send({ event: "simulate" });
+      send({ event: "simulate", employee_id: user?.employeeId ?? null, auto_open: autoOpen });
     } else {
       simulateDemoFlow?.();
     }

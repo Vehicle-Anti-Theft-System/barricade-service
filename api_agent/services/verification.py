@@ -21,8 +21,10 @@ def event_message(event: str, **kwargs: Any) -> dict:
     return {"event": event, **kwargs}
 
 
-async def run_mock_verification(ws: WebSocket, *, auto_open: bool = True) -> None:
-    """Run a single mock verification flow: RFID → ANPR → Fingerprint → gate."""
+async def run_mock_verification(ws: WebSocket, *, auto_open: bool = True, employee_id: str | None = None) -> None:
+    """Run a single mock verification flow: RFID → ANPR → Fingerprint → gate.
+    employee_id: logged-in barricade employee (passed when backend is wired; stored on alerts).
+    """
     manager = get_manager()
     msg = event_message
     delays = {
