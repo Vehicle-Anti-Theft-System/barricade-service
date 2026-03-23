@@ -1,11 +1,16 @@
 """Root and API info."""
+import logging
+
 from fastapi import APIRouter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
 @router.get("/")
 def root() -> dict:
+    logger.debug("GET /")
     return {
         "service": "Barricade API Agent",
         "docs": "/docs",

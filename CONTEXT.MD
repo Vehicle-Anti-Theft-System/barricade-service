@@ -46,6 +46,12 @@ At mine sites in India, cargo theft (coal, fuel, etc.) occurs through **truck-dr
 
 There is currently no automated way for mine sites to verify that the correct driver and correct truck are entering together.
 
+### Deployment model
+
+- **Barricade edge** (`barricade-service/`): runs **on the local machine at the gate** (ANPR, API Agent, RFID, dashboard). Use `./run-barricade.sh` to start these only — it does **not** start the backend.
+- **Central backend** (`backend-service/`): runs **remotely** (e.g. **AWS**): FastAPI + MongoDB. Configure the API Agent with `BACKEND_BASE_URL` in `barricade-service/.env` (HTTPS base URL, no trailing slash). `DEFAULT_BARRICADE_ID` must match a barricade document in that deployment’s database.
+- **Local backend dev:** run `backend-service` and MongoDB separately on your laptop; set `BACKEND_BASE_URL=http://localhost:8000` in `barricade-service/.env`.
+
 ---
 
 ## 2. Solution Overview
@@ -185,7 +191,7 @@ BARRICADE LOCAL SYSTEM (one per entry point)
 ├── API Agent             ✅ DONE — FastAPI + WebSocket (core/, routes/, services/)
 └── React Dashboard       ✅ DONE — Vite + React + MUI v5, login gate, verification UI
 
-CENTRAL BACKEND (backend-service/)
+CENTRAL BACKEND (backend-service/ — deployed on AWS / cloud, not bundled with barricade)
 ├── Verification Service  ✅ 2-factor check (RFID + ANPR); accepts optional employee_id
 ├── Data/Query Service    ✅ Full CRUD
 ├── Alert Service         ✅ Auto-created on failures; stores employee_id

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { logger } from "../utils/logger";
 
 const STORAGE_KEY = "barricade_auth";
 
@@ -35,15 +36,18 @@ export function useAuth() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
       setUser(userData);
       setLoading(false);
+      logger.info("Login successful:", userData.employeeId);
       return true;
     }
 
+    logger.warn("Login failed: invalid credentials");
     setError("Invalid Employee ID or Password");
     setLoading(false);
     return false;
   }, []);
 
   const logout = useCallback(() => {
+    logger.info("Logout");
     localStorage.removeItem(STORAGE_KEY);
     setUser(null);
     setError(null);

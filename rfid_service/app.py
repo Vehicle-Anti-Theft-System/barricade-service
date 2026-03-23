@@ -1,15 +1,31 @@
 """Mock RFID service — push-only to API Agent (no data pulled from the agent)."""
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from rfid_service.logging_config import configure_logging
 from rfid_service.push import push_rfid_tag
 from rfid_service.service import mock_rfid_queue
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    configure_logging()
+    logger.info("RFID service (mock) starting on port 8002 — push-only to API Agent")
+    yield
+    logger.info("RFID service shutdown")
+
 
 app = FastAPI(
     title="RFID Service (Mock)",
     version="0.2.0",
     description="Simulates tag reads; forwards only { rfid_tag } to the API Agent via HTTP POST.",
+    lifespan=lifespan,
 )
 
 _UI_HTML = """<!DOCTYPE html>
@@ -42,6 +58,7 @@ _UI_HTML = """<!DOCTYPE html>
 
 @app.get("/")
 def root():
+    logger.debug("GET /")
     return {
         "service": "rfid-service",
         "mode": "mock",
@@ -58,11 +75,13 @@ def root():
 @app.get("/ui", response_class=HTMLResponse)
 def mock_ui():
     """Simple HTML page with a button to simulate an RFID read (for local testing)."""
+    logger.debug("GET /ui")
     return _UI_HTML
 
 
 @app.get("/health")
 def health():
+    logger.debug("GET /health")
     return {"status": "ok", "service": "rfid-service", "mode": "mock", "flow": "push_only"}
 
 
@@ -74,7 +93,15 @@ def trigger_scan():
     Response is local transport feedback only (HTTP status from the ingest call), not verification outcome.
     """
     tag = mock_rfid_queue.next_tag()
+    logger.info("Trigger: cycling mock tag=%s → POST to API Agent ingest", tag)
     ok, body, status = push_rfid_tag(tag)
+    logger.info(
+        "Trigger: ingest http_ok=%s http_status=%s",
+        ok,
+        status,
+    )
+    if not ok:
+        logger.warning("Trigger: ingest failed or non-success (snippet=%s)", (body or "")[:200])
     return {
         "rfid_tag": tag,
         "ingest": {

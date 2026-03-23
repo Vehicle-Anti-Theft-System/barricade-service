@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { WEBSOCKET_URL } from "../constants";
+import { logger } from "../utils/logger";
 
 /**
  * WebSocket hook - connects to API Agent and dispatches events to reducer.
@@ -15,6 +16,7 @@ export function useWebSocket(dispatch, options = {}) {
   const simulateDemoFlow = useCallback((scenario = "success") => {
     if (!enableDemoMode || !dispatchRef.current) return;
     demoModeRef.current = true;
+    logger.info("Demo flow started:", scenario);
 
     const d = dispatchRef.current;
     d({ type: "session_reset", payload: {} });
@@ -126,12 +128,14 @@ export function useWebSocket(dispatch, options = {}) {
 
     const connect = () => {
       try {
+        logger.info("WebSocket connecting:", WEBSOCKET_URL);
         const ws = new WebSocket(WEBSOCKET_URL);
         wsRef.current = ws;
 
         ws.onopen = () => {
           if (mounted) {
             demoModeRef.current = false;
+            logger.info("WebSocket connected");
             onConnect?.();
           }
         };
@@ -139,22 +143,26 @@ export function useWebSocket(dispatch, options = {}) {
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
+            logger.debug("WS event:", msg.event);
             if (mounted && dispatchRef.current) {
               dispatchRef.current({ type: msg.event, payload: msg });
             }
           } catch {
-            // ignore
+            logger.warn("WS: ignored non-JSON message");
           }
         };
 
         ws.onclose = () => {
+          logger.info("WebSocket closed");
           if (mounted) onDisconnect?.();
         };
 
         ws.onerror = () => {
+          logger.warn("WebSocket error; closing socket");
           ws.close();
         };
-      } catch {
+      } catch (err) {
+        logger.error("WebSocket connect failed:", err);
         if (mounted && enableDemoMode) {
           onDisconnect?.();
         }
@@ -177,7 +185,13 @@ export function useWebSocket(dispatch, options = {}) {
     simulateDemoFlow,
     send: (data) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(typeof data === "string" ? data : JSON.stringify(data));
+        const payload = typeof data === "string" ? data : JSON.stringify(data);
+        const label =
+          typeof data === "object" && data !== null ? data.event || data.command || "message" : "raw";
+        logger.debug("WS send:", label);
+        wsRef.current.send(payload);
+      } else {
+        logger.warn("WS send skipped: socket not open");
       }
     },
   };

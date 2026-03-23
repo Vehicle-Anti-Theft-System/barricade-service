@@ -12,6 +12,7 @@ Mock RFID layer for local barricade development. **Flow is unidirectional:** thi
 | Env | Default | Purpose |
 |-----|---------|---------|
 | `API_AGENT_RFID_INGEST_URL` | `http://localhost:8080/rfid/scan` | Full URL for `POST` body `{ "rfid_tag": "..." }` |
+| `LOG_LEVEL` | `INFO` | Python logging: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 Barricade identity for backend verification is configured on the **API Agent** (`DEFAULT_BARRICADE_ID`), not sent by the RFID service.
 

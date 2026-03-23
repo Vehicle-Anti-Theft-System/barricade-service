@@ -2,7 +2,12 @@
 Inbound RFID scan from the local RFID service (Arduino/serial → RFID service → here).
 
 Unidirectional: RFID service only POSTs to this endpoint; it never receives data from API Agent.
+
+After RFID validates, the ANPR pipeline runs as a background task:
+    ANPR capture → backend verify → gate decision
 """
+import asyncio
+import logging
 from uuid import UUID
 
 import httpx
@@ -12,7 +17,10 @@ from pydantic import BaseModel, Field
 from api_agent.config import backend_base_url, default_barricade_id
 from api_agent.core import get_manager
 from api_agent.core.events import EVENT_RFID_CHECK_RESULT, EVENT_RFID_SCANNING
-from api_agent.services.verification import event_message
+from api_agent.services.session import get_session
+from api_agent.services.verification import event_message, run_anpr_pipeline
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rfid", tags=["rfid"])
 
@@ -52,12 +60,21 @@ def _map_backend_to_ws_payload(data: dict) -> dict:
 @router.post("/scan")
 async def ingest_rfid_scan(body: RFIDScanIngest):
     """
-    Receive a tag read from the RFID service. API Agent validates via backend (if configured),
-    then pushes `rfid_scanning` + `rfid_check_result` to all WebSocket clients.
+    Receive a tag read from the RFID service.
+    1. Broadcast rfid_scanning to dashboard.
+    2. Validate via backend POST /api/verify/rfid.
+    3. Broadcast rfid_check_result.
+    4. If VALIDATED → launch ANPR pipeline as background task.
 
-    RFID service does not receive any response payload it must act on — only HTTP status.
+    RFID service only cares about HTTP status — verification results go to dashboard via WS.
     """
+    tag = body.rfid_tag.strip()
+    logger.info("RFID ingest received tag=%s", tag)
+
     manager = get_manager()
+    session = get_session()
+    session.reset()
+
     await manager.broadcast(event_message(EVENT_RFID_SCANNING))
 
     barricade_id = default_barricade_id()
@@ -70,6 +87,7 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
                 detail="API Agent: set DEFAULT_BARRICADE_ID env for backend verification",
             )
         )
+        logger.warning("RFID ingest: DEFAULT_BARRICADE_ID not set; failing open for dashboard")
         return {"accepted": True, "note": "barricade_id not configured; emitted failure to dashboard"}
 
     try:
@@ -79,6 +97,7 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
 
     url = f"{backend_base_url()}/api/verify/rfid"
     payload = {"rfid_tag": body.rfid_tag.strip(), "barricade_id": barricade_id}
+    logger.debug("POST %s for RFID verify", url)
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -99,6 +118,7 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
                 detail=f"Backend error: {detail}",
             )
         )
+        logger.error("RFID ingest: backend HTTP error for tag=%s: %s", tag, detail)
         return {"accepted": True, "note": "backend returned error; failure pushed to dashboard"}
     except (httpx.RequestError, ValueError) as e:
         await manager.broadcast(
@@ -109,8 +129,17 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
                 detail=f"Backend unreachable: {e!s}",
             )
         )
+        logger.error("RFID ingest: backend unreachable for tag=%s: %s", tag, e)
         return {"accepted": True, "note": "backend unreachable; failure pushed to dashboard"}
 
+    session.set_rfid_result(data)
+    status = data.get("status", "?")
+    logger.info("RFID backend result tag=%s status=%s", tag, status)
     ws_payload = _map_backend_to_ws_payload(data)
     await manager.broadcast(ws_payload)
+
+    if data.get("status") == "VALIDATED":
+        logger.info("RFID validated; scheduling ANPR pipeline")
+        asyncio.create_task(run_anpr_pipeline())
+
     return {"accepted": True}

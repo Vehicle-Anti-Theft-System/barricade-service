@@ -91,12 +91,20 @@ export default function App() {
   }
 
   function handleManualPlateSubmit(plate) {
-    dispatch({ type: "anpr_manual_submit", payload: { plate } });
+    if (wsConnected && send) {
+      send({ event: "manual_plate", plate });
+    } else {
+      dispatch({ type: "anpr_manual_submit", payload: { plate } });
+    }
     setManualPlateOpen(false);
   }
 
   function handleOpenGate() {
-    dispatch({ type: "gate_open_click" });
+    if (wsConnected && send) {
+      send({ event: "open_gate" });
+    } else {
+      dispatch({ type: "gate_open_click" });
+    }
   }
 
   if (!isAuthenticated) {

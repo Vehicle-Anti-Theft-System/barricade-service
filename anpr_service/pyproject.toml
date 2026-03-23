@@ -1,0 +1,16 @@
+[project]
+name = "anpr-service"
+version = "0.1.0"
+description = "ANPR HTTP server — camera MJPEG stream + license plate detection via YOLO + EasyOCR"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[project.scripts]
+anpr-service = "anpr_service.server:main"
+
+[tool.setuptools]
+packages = ["anpr_service", "anpr_service.sort"]
+package-dir = { "anpr_service" = "." }

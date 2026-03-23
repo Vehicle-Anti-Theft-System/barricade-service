@@ -39,13 +39,25 @@ api_agent/
 │   ├── __init__.py   # Aggregates routers
 │   ├── root.py       # GET /
 │   ├── health.py     # GET /health
+│   ├── rfid_scan.py  # POST /rfid/scan (RFID service ingest)
 │   └── ws.py         # WebSocket /ws
 ├── services/         # Business logic
 │   ├── __init__.py
-│   └── verification.py  # Mock RFID→ANPR→gate flow
+│   ├── session.py    # Verification session (RFID context for manual / gate)
+│   └── verification.py  # Mock + live ANPR pipelines
+├── config.py         # Env + log_effective_settings()
+├── logging_config.py # LOG_LEVEL, format
 ├── pyproject.toml
 └── README.md
 ```
+
+## Logging
+
+| Env | Default | Purpose |
+|-----|---------|---------|
+| `LOG_LEVEL` | `INFO` | `DEBUG` shows HTTP/WS details, broadcast fan-out, ANPR/backend payloads |
+
+On startup the agent logs effective settings (`BACKEND_BASE_URL`, `ANPR_SERVICE_URL`, whether `DEFAULT_BARRICADE_ID` is set, retry counts). WebSocket commands, RFID ingest, and backend HTTP calls are logged at INFO; use `DEBUG` for full request/response traces.
 
 ## WebSocket commands (dashboard → agent)
 

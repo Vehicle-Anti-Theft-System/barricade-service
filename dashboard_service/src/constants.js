@@ -22,5 +22,8 @@ export const ANPR_STATES = {
   FAILED: "FAILED",
 };
 
-export const MJPEG_STREAM_URL = "http://localhost:8001/video_feed";
-export const WEBSOCKET_URL = "ws://localhost:8080/ws";
+const API_AGENT_HOST = import.meta.env.VITE_API_AGENT_HOST || "localhost:8080";
+const ANPR_HOST = import.meta.env.VITE_ANPR_HOST || "localhost:8001";
+
+export const MJPEG_STREAM_URL = `http://${ANPR_HOST}/video_feed`;
+export const WEBSOCKET_URL = `ws://${API_AGENT_HOST}/ws`;

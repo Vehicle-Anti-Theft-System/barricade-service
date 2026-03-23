@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "api-agent",
     "rfid-service",
+    "anpr-service",
     "easyocr>=1.7.2",
     "filterpy>=1.4.5",
     "numpy>=2.4.2",
@@ -21,8 +22,10 @@ dependencies = [
 members = [
     "api_agent",
     "rfid_service",
+    "anpr_service",
 ]
 
 [tool.uv.sources]
 api-agent = { workspace = true }
 rfid-service = { workspace = true }
+anpr-service = { workspace = true }

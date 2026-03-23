@@ -44,6 +44,31 @@ Or install using pip:
 pip install -e .
 ```
 
+## Run the local barricade stack (one script)
+
+**Architecture:** The **backend** (FastAPI + MongoDB) is intended to run **remotely** (e.g. on AWS). This repo (`barricade-service`) is what runs **on the gate PC**: ANPR, API Agent, RFID mock, and the dashboard. The API Agent talks to your deployed backend via `BACKEND_BASE_URL` in `.env`.
+
+1. Deploy `backend-service` (or your API) and seed MongoDB there; note the **barricade id** and API base URL.
+2. Copy `.env.example` → `.env` and set:
+   - `BACKEND_BASE_URL` — your AWS (or cloud) API base URL, **no trailing slash**
+   - `DEFAULT_BARRICADE_ID` — UUID of the barricade for this gate
+3. From this directory, after `uv sync`:
+
+```bash
+./run-barricade.sh
+```
+
+This starts exactly four processes: **`api_agent`** (8080), **`anpr_service`** (8001), **`rfid_service`** (8002), **`dashboard_service`** (5173). Press **Ctrl+C** to stop all.
+
+Optional:
+
+```bash
+SKIP_ANPR=1 ./run-barricade.sh       # skip ANPR (no camera / ML)
+SKIP_DASHBOARD=1 ./run-barricade.sh  # skip Vite dashboard only
+```
+
+The backend is not part of this script; deploy it separately (e.g. AWS) and set `BACKEND_BASE_URL`. For local backend dev, run `backend-service` yourself and use `BACKEND_BASE_URL=http://localhost:8000`.
+
 ## Quick Start
 
 ### Using the ANPR Service
