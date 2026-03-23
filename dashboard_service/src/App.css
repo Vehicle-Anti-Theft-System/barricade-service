@@ -464,7 +464,7 @@ body {
 .driver-name { font-weight: 700; font-size: 0.88rem; color: var(--slate-dark); }
 .driver-id   { font-size: 0.75rem; color: #64748b; font-weight: 500; }
 
-.fingerprint-badge {
+.driver-assigned-badge {
   display: inline-flex; align-items: center; gap: 4px;
   background: #f0fdf4;
   color: #16a34a;

@@ -1,17 +1,17 @@
 # API Agent — Context
 
-> Use this file to restore full context for the API Agent in any future conversation. (Updated 2026-03-18.)
+> Use this file to restore full context for the API Agent in any future conversation.
 
 ## Role
 
 The **API Agent** is the local orchestrator at each barricade. It:
 
 - Accepts WebSocket connections from the **React Dashboard** (one or more clients per barricade).
-- Receives inputs from (future) **RFID**, **ANPR**, and **Fingerprint** services.
-- Sends verification events to the dashboard so the UI stays in sync (RFID → ANPR → Fingerprint → gate).
-- (Future) Calls the **central backend** to validate RFID, plate, and fingerprint against registered orders.
+- Receives inputs from (future) **RFID** and **ANPR** services (2-factor verification: RFID + license plate).
+- Sends verification events to the dashboard so the UI stays in sync (**RFID → ANPR → gate**).
+- Calls the **central backend** where configured (e.g. RFID ingest → `POST /api/verify/rfid`).
 
-Until RFID/ANPR/Fingerprint and the backend exist, the Agent runs a **mock verification flow** and responds to dashboard commands (simulate, session_reset, manual_plate, open_gate).
+Until ANPR is fully wired, the Agent can run a **mock verification flow** and responds to dashboard commands (`simulate`, `session_reset`, `manual_plate`, `open_gate`).
 
 ---
 
@@ -26,9 +26,9 @@ Until RFID/ANPR/Fingerprint and the backend exist, the Agent runs a **mock verif
 | **Folder structure** | `core/` (events, connection), `routes/`, `services/`. |
 | **WebSocket protocol** | Outbound events and inbound commands match dashboard reducer. |
 | **Connection manager** | Single manager; broadcast for `session_reset`. |
-| **Mock verification** | `services/verification.py`: RFID → ANPR → Fingerprint → gate_decision. |
+| **Mock verification** | `services/verification.py`: RFID → ANPR → `gate_decision` (no fingerprint step). |
 | **Commands handled** | `simulate` / `start_verification`, `session_reset`, `manual_plate`, `open_gate`. |
-| **Employee ID in commands** | Dashboard sends `employee_id` with simulate/start_verification; agent accepts and passes to `run_mock_verification(..., employee_id=...)` for when backend is wired (backend stores it on alerts). |
+| **Employee ID in commands** | Dashboard sends `employee_id` with simulate/start_verification; reserved for backend alerts. |
 | **RFID ingest** | `POST /rfid/scan` — body `{ rfid_tag }` from RFID service only; calls backend `POST /api/verify/rfid` when `DEFAULT_BARRICADE_ID` + `BACKEND_BASE_URL` set; broadcasts `rfid_scanning` + `rfid_check_result`. |
 
 ### ❌ Not done
@@ -37,8 +37,7 @@ Until RFID/ANPR/Fingerprint and the backend exist, the Agent runs a **mock verif
 |------|--------|
 | **RFID hardware** | Replace mock tag queue with serial/SDK; keep posting same JSON to `/rfid/scan`. |
 | **ANPR integration** | Trigger snapshot from ANPR HTTP server; send `anpr_result` / `anpr_retry` / `anpr_manual`. |
-| **Fingerprint integration** | On scan from Fingerprint service → send `fingerprint_result`. |
-| **Backend integration (full flow)** | ANPR/FP still mock; wire remaining steps to backend. |
+| **Backend integration (ANPR + gate)** | Wire ANPR verify + `gate-open` to backend from live flow. |
 | **Auth** | No auth on WebSocket or HTTP; add if needed for production. |
 
 ---
@@ -96,13 +95,11 @@ Every message is JSON with an `event` field. Dashboard dispatches `{ type: msg.e
 |----------------------|----------------|
 | `session_reset`      | On connect; when client sends `session_reset` (broadcast). |
 | `rfid_scanning`      | RFID read started. |
-| `rfid_check_result`  | Backend/mock result: `status`, `rfid`, `truck_id`, `order_id` or `detail`. |
+| `rfid_check_result`  | Backend/mock result: `status`, `rfid`, `truck_id`, `order_id`, optional `driver_name`, or `detail`. |
 | `anpr_processing`    | ANPR capture started. |
 | `anpr_result`        | Plate result: `status`, `plate`, `confidence` or `detail`. |
 | `anpr_retry`         | Low confidence retry: `attempt`. |
 | `anpr_manual`        | 3x failure; manual entry required. |
-| `fingerprint_scanning`| Fingerprint read started. |
-| `fingerprint_result` | Driver result: `status`, `driver`, `driver_id`, `fingerprint_id`, `all_clear` or `detail`. |
 | `gate_decision`      | `open`, `method` (e.g. `"auto"`, `"manual"`). |
 | `alert_raised`       | `type`, `detail`; optional `employee_id` when backend is wired. |
 
@@ -112,9 +109,9 @@ Dashboard sends JSON with `event` or `command`.
 
 | event / command      | Payload | Agent behavior |
 |----------------------|---------|----------------|
-| `simulate` / `start_verification` | optional `auto_open` (default true), optional `employee_id` (logged-in barricade employee) | Run mock flow; pass `employee_id` to verification (for backend when wired); send event sequence; optionally send `gate_decision`. |
+| `simulate` / `start_verification` | optional `auto_open` (default true), optional `employee_id` | Run mock RFID → ANPR → gate flow; optionally send `gate_decision`. |
 | `session_reset`      | —       | Broadcast `session_reset` to all clients. |
-| `manual_plate`       | `plate` | Send `anpr_result` (VALIDATED, that plate) then `fingerprint_scanning`. |
+| `manual_plate`       | `plate` | Send `anpr_result` (VALIDATED, that plate). |
 | `open_gate`          | —       | Send `gate_decision` (open, method=manual). |
 
 ---
@@ -147,5 +144,5 @@ See `api_agent/pyproject.toml`. Workspace root lists `api-agent` so `uv run` fro
 
 ## Related
 
-- **Repo root `CONTEXT.MD`** — Full system (problem, 3-factor flow, dashboard state machine, WebSocket events).
+- **Repo root `CONTEXT.MD`** — Full system (problem, 2-factor flow, dashboard state machine, WebSocket events).
 - **Dashboard** — `dashboard_service/`; `useWebSocket`, `useVerificationState` consume these events.

@@ -1,16 +1,11 @@
 import { Button, Switch, FormControlLabel } from "@mui/material";
 import LockIcon from "@mui/icons-material/Lock";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
-import {
-  RFID_STATES,
-  ANPR_STATES,
-  FINGERPRINT_STATES,
-} from "../constants";
+import { RFID_STATES, ANPR_STATES } from "../constants";
 
 export function GateControl({
   rfid,
   anpr,
-  fingerprint,
   autoOpen,
   onAutoOpenChange,
   gateOpen,
@@ -19,8 +14,7 @@ export function GateControl({
 }) {
   const allVerified =
     rfid?.status === RFID_STATES.VALIDATED &&
-    anpr?.status === ANPR_STATES.VALIDATED &&
-    fingerprint?.status === FINGERPRINT_STATES.VALIDATED;
+    anpr?.status === ANPR_STATES.VALIDATED;
 
   const isOpen = gateOpen;
   const canOpen = allVerified;
@@ -37,7 +31,7 @@ export function GateControl({
           ].includes(rfid?.status)}
         />
         <CheckRow
-          label="License Plate"
+          label="License Plate (ANPR)"
           checked={anpr?.status === ANPR_STATES.VALIDATED}
           scanning={[
             ANPR_STATES.TRIGGERED,
@@ -45,15 +39,6 @@ export function GateControl({
             ANPR_STATES.RETRY,
             ANPR_STATES.IN_PROGRESS,
           ].includes(anpr?.status)}
-        />
-        <CheckRow
-          label="Driver Verification"
-          checked={fingerprint?.status === FINGERPRINT_STATES.VALIDATED}
-          scanning={[
-            FINGERPRINT_STATES.WAITING_SCAN,
-            FINGERPRINT_STATES.SCANNING,
-            FINGERPRINT_STATES.IN_PROGRESS,
-          ].includes(fingerprint?.status)}
         />
       </div>
 

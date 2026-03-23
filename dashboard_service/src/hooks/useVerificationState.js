@@ -1,9 +1,5 @@
 import { useReducer } from "react";
-import {
-  RFID_STATES,
-  ANPR_STATES,
-  FINGERPRINT_STATES,
-} from "../constants";
+import { RFID_STATES, ANPR_STATES } from "../constants";
 
 const initialState = {
   rfid: {
@@ -11,18 +7,13 @@ const initialState = {
     value: null,
     truckId: null,
     orderId: null,
+    driverName: null,
   },
   anpr: {
     status: ANPR_STATES.ON_HOLD,
     value: null,
     confidence: null,
     attempt: 0,
-  },
-  fingerprint: {
-    status: FINGERPRINT_STATES.ON_HOLD,
-    driver: null,
-    driverId: null,
-    fingerprintId: null,
   },
   logs: [],
   gateOpen: false,
@@ -62,6 +53,8 @@ function verificationReducer(state, action) {
             value: action.payload.rfid,
             truckId: action.payload.truck_id,
             orderId: action.payload.order_id,
+            driverName:
+              action.payload.driver_name ?? action.payload.driverName ?? null,
           },
           anpr: {
             ...state.anpr,
@@ -82,6 +75,7 @@ function verificationReducer(state, action) {
           value: action.payload.rfid ?? null,
           truckId: null,
           orderId: null,
+          driverName: null,
         },
         sessionPhase: "error",
         alert: action.payload.detail ?? "RFID not found or no active order",
@@ -102,14 +96,11 @@ function verificationReducer(state, action) {
             value: action.payload.plate,
             confidence: action.payload.confidence,
           },
-          fingerprint: {
-            ...state.fingerprint,
-            status: FINGERPRINT_STATES.WAITING_SCAN,
-          },
+          sessionPhase: "complete",
           logs: pushLog(
             state.logs,
             t,
-            `ANPR — Plate ${action.payload.plate} (${Math.round((action.payload.confidence ?? 0) * 100)}%)`,
+            `ANPR — Plate ${action.payload.plate} (${Math.round((action.payload.confidence ?? 0) * 100)}%) — verification complete`,
             "success"
           ),
         };
@@ -169,50 +160,12 @@ function verificationReducer(state, action) {
           value: action.payload.plate,
           confidence: 1,
         },
-        fingerprint: {
-          ...state.fingerprint,
-          status: FINGERPRINT_STATES.WAITING_SCAN,
-        },
+        sessionPhase: "complete",
         logs: pushLog(
           state.logs,
           t,
-          `Manual plate entry — ${action.payload.plate}`,
+          `Manual plate entry — ${action.payload.plate} — verification complete`,
           "success"
-        ),
-      };
-
-    case "fingerprint_result":
-      if (action.payload.status === "VALIDATED") {
-        return {
-          ...state,
-          fingerprint: {
-            status: FINGERPRINT_STATES.VALIDATED,
-            driver: action.payload.driver,
-            driverId: action.payload.driver_id,
-            fingerprintId: action.payload.fingerprint_id,
-          },
-          sessionPhase: "complete",
-          logs: pushLog(
-            state.logs,
-            t,
-            `Driver verified — ${action.payload.driver}`,
-            "success"
-          ),
-        };
-      }
-      return {
-        ...state,
-        fingerprint: {
-          ...state.fingerprint,
-          status: FINGERPRINT_STATES.FAILED,
-        },
-        sessionPhase: "error",
-        alert: action.payload.detail ?? "Driver mismatch",
-        logs: pushLog(
-          state.logs,
-          t,
-          `Fingerprint FAILED — ${action.payload.detail ?? "Driver mismatch"}`,
-          "error"
         ),
       };
 
@@ -267,15 +220,6 @@ function verificationReducer(state, action) {
       return {
         ...state,
         anpr: { ...state.anpr, status: ANPR_STATES.PROCESSING },
-      };
-
-    case "fingerprint_scanning":
-      return {
-        ...state,
-        fingerprint: {
-          ...state.fingerprint,
-          status: FINGERPRINT_STATES.SCANNING,
-        },
       };
 
     default:

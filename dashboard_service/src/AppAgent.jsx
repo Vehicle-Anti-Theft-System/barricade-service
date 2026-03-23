@@ -125,7 +125,7 @@ export default function AppAgent() {
             <div className="right">
               <StatusBadge type="rfid" data={state.rfid} />
               <StatusBadge type="anpr" data={state.anpr} />
-              <DriverCard fingerprint={state.fingerprint} />
+              <DriverCard rfid={state.rfid} />
 
               <div className="action-buttons-row">
                 <button
@@ -149,7 +149,6 @@ export default function AppAgent() {
               <GateControl
                 rfid={state.rfid}
                 anpr={state.anpr}
-                fingerprint={state.fingerprint}
                 autoOpen={autoOpen}
                 onAutoOpenChange={setAutoOpen}
                 gateOpen={state.gateOpen}

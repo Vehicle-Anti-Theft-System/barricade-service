@@ -64,7 +64,6 @@ export function Header({
                   <MenuItem value="success">Success</MenuItem>
                   <MenuItem value="rfid_mismatch">RFID mismatch</MenuItem>
                   <MenuItem value="anpr_mismatch">ANPR mismatch</MenuItem>
-                  <MenuItem value="fingerprint_mismatch">Fingerprint mismatch</MenuItem>
                 </Select>
               </FormControl>
             )}

@@ -1,11 +1,6 @@
-import {
-  RFID_STATES,
-  ANPR_STATES,
-  FINGERPRINT_STATES,
-} from "../constants";
+import { RFID_STATES, ANPR_STATES } from "../constants";
 import WifiIcon from "@mui/icons-material/Wifi";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
-import FingerprintIcon from "@mui/icons-material/Fingerprint";
 
 const STATUS_LABELS = {
   [RFID_STATES.WAITING]: "Awaiting RFID scan",
@@ -22,28 +17,13 @@ const STATUS_LABELS = {
   [ANPR_STATES.IN_PROGRESS]: "Checking backend…",
   [ANPR_STATES.VALIDATED]: "Validated",
   [ANPR_STATES.FAILED]: "Failed",
-
-  [FINGERPRINT_STATES.ON_HOLD]: "On hold",
-  [FINGERPRINT_STATES.WAITING_SCAN]: "Awaiting fingerprint scan",
-  [FINGERPRINT_STATES.SCANNING]: "Scanning fingerprint…",
-  [FINGERPRINT_STATES.IN_PROGRESS]: "Checking backend…",
-  [FINGERPRINT_STATES.VALIDATED]: "Validated",
-  [FINGERPRINT_STATES.FAILED]: "Failed",
 };
 
 function getStatusKind(status, type) {
   const validated =
-    type === "rfid"
-      ? RFID_STATES.VALIDATED
-      : type === "anpr"
-        ? ANPR_STATES.VALIDATED
-        : FINGERPRINT_STATES.VALIDATED;
+    type === "rfid" ? RFID_STATES.VALIDATED : ANPR_STATES.VALIDATED;
   const failed =
-    type === "rfid"
-      ? RFID_STATES.FAILED
-      : type === "anpr"
-        ? ANPR_STATES.FAILED
-        : FINGERPRINT_STATES.FAILED;
+    type === "rfid" ? RFID_STATES.FAILED : ANPR_STATES.FAILED;
 
   if (status === validated) return "validated";
   if (status === failed) return "failed";
@@ -54,9 +34,6 @@ function getStatusKind(status, type) {
     ANPR_STATES.PROCESSING,
     ANPR_STATES.RETRY,
     ANPR_STATES.IN_PROGRESS,
-    FINGERPRINT_STATES.WAITING_SCAN,
-    FINGERPRINT_STATES.SCANNING,
-    FINGERPRINT_STATES.IN_PROGRESS,
   ];
   if (busy.includes(status)) return "scanning";
   return "waiting";
@@ -65,12 +42,13 @@ function getStatusKind(status, type) {
 const IconMap = {
   rfid: WifiIcon,
   anpr: DirectionsCarIcon,
-  fingerprint: FingerprintIcon,
 };
 
 export function StatusBadge({ type, data }) {
   const Icon = IconMap[type];
-  const status = data?.status ?? (type === "rfid" ? RFID_STATES.WAITING : type === "anpr" ? ANPR_STATES.ON_HOLD : FINGERPRINT_STATES.ON_HOLD);
+  const status =
+    data?.status ??
+    (type === "rfid" ? RFID_STATES.WAITING : ANPR_STATES.ON_HOLD);
   const kind = getStatusKind(status, type);
   const label = STATUS_LABELS[status] ?? status;
 
@@ -81,7 +59,7 @@ export function StatusBadge({ type, data }) {
           <Icon sx={{ fontSize: 18 }} />
         </span>
         <span className="info-card-title">
-          {type === "rfid" ? "RFID" : type === "anpr" ? "LICENSE PLATE" : "FINGERPRINT"}
+          {type === "rfid" ? "RFID" : "LICENSE PLATE"}
         </span>
         {kind === "validated" && <span className="check-badge">✓</span>}
         {kind === "failed" && <span className="fail-badge">✗</span>}
@@ -94,14 +72,12 @@ export function StatusBadge({ type, data }) {
           <div className="info-card-value">
             {type === "rfid" && data?.value}
             {type === "anpr" && data?.value}
-            {type === "fingerprint" && data?.driver}
           </div>
           <div className="info-card-sub">
             {type === "rfid" && data?.truckId && `Truck: ${data.truckId}`}
             {type === "anpr" &&
               data?.confidence != null &&
               `Confidence: ${Math.round(data.confidence * 100)}%`}
-            {type === "fingerprint" && data?.driverId}
           </div>
         </>
       )}

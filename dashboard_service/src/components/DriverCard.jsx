@@ -1,15 +1,10 @@
-import { FINGERPRINT_STATES } from "../constants";
 import PersonIcon from "@mui/icons-material/Person";
-import FingerprintIcon from "@mui/icons-material/Fingerprint";
+import { RFID_STATES } from "../constants";
 
-export function DriverCard({ fingerprint }) {
-  const status = fingerprint?.status ?? FINGERPRINT_STATES.ON_HOLD;
-  const isValidated = status === FINGERPRINT_STATES.VALIDATED;
-  const isScanning = [
-    FINGERPRINT_STATES.WAITING_SCAN,
-    FINGERPRINT_STATES.SCANNING,
-    FINGERPRINT_STATES.IN_PROGRESS,
-  ].includes(status);
+/** Shows order-assigned driver from RFID validation (no separate biometric step). */
+export function DriverCard({ rfid }) {
+  const validated = rfid?.status === RFID_STATES.VALIDATED;
+  const name = rfid?.driverName;
 
   return (
     <div className="card white-card info-card driver-card">
@@ -17,27 +12,28 @@ export function DriverCard({ fingerprint }) {
         <span className="info-icon">
           <PersonIcon sx={{ fontSize: 18 }} />
         </span>
-        <span className="info-card-title">DRIVER</span>
-        {isValidated && <span className="check-badge">✓</span>}
-        {isScanning && <span className="scanning-dot" />}
+        <span className="info-card-title">ASSIGNED DRIVER</span>
+        {validated && name && <span className="check-badge">✓</span>}
       </div>
 
-      {status === FINGERPRINT_STATES.ON_HOLD && (
-        <p className="info-empty">Awaiting fingerprint scan</p>
+      {!validated && (
+        <p className="info-empty">Shown after RFID matches an active order</p>
       )}
-      {isScanning && (
-        <p className="info-scanning">Scanning fingerprint…</p>
+      {validated && !name && (
+        <p className="info-scanning">Driver name loading…</p>
       )}
-      {isValidated && (
+      {validated && name && (
         <div className="driver-body">
           <div className="driver-photo">
             <PersonIcon sx={{ fontSize: 32, color: "#94a3b8", width: "100%", height: "100%" }} />
           </div>
           <div className="driver-details">
-            <div className="driver-name">{fingerprint?.driver}</div>
-            <div className="driver-id">{fingerprint?.driverId}</div>
-            <span className="fingerprint-badge">
-              <FingerprintIcon sx={{ fontSize: 14 }} /> Fingerprint Verified
+            <div className="driver-name">{name}</div>
+            {rfid?.truckId && (
+              <div className="driver-id">Truck: {rfid.truckId}</div>
+            )}
+            <span className="driver-assigned-badge">
+              From order / RFID
               <span className="fp-tick">✓</span>
             </span>
           </div>

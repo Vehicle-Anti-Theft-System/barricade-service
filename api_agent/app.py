@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Barricade API Agent",
-    description="WebSocket orchestrator for RFID, ANPR, Fingerprint verification",
+    description="WebSocket orchestrator for RFID + ANPR (2-factor) verification",
     lifespan=lifespan,
 )
 

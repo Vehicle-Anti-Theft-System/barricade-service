@@ -11,7 +11,6 @@ from api_agent.core.events import (
     CMD_SIMULATE,
     CMD_START_VERIFICATION,
     EVENT_ANPR_RESULT,
-    EVENT_FINGERPRINT_SCANNING,
     EVENT_GATE_DECISION,
     EVENT_SESSION_RESET,
 )
@@ -56,10 +55,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                             plate=plate,
                             confidence=1.0,
                         ),
-                    )
-                    await manager.send_to(
-                        ws,
-                        event_message(EVENT_FINGERPRINT_SCANNING),
                     )
 
             elif event == CMD_OPEN_GATE:

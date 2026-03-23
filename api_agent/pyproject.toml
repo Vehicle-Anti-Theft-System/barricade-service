@@ -1,7 +1,7 @@
 [project]
 name = "api-agent"
 version = "0.1.0"
-description = "FastAPI + WebSocket orchestrator for barricade RFID, ANPR, Fingerprint verification"
+description = "FastAPI + WebSocket orchestrator for barricade RFID + ANPR verification"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
