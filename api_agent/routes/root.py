@@ -11,4 +11,5 @@ def root() -> dict:
         "docs": "/docs",
         "health": "/health",
         "ws": "ws://localhost:8080/ws",
+        "rfid_ingest": "POST /rfid/scan — body { rfid_tag } from local RFID service (one-way)",
     }

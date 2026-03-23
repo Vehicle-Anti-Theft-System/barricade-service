@@ -449,6 +449,9 @@ body {
   width: 56px; height: 64px;
   background: #f1f5f9;
   border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   overflow: hidden; flex-shrink: 0;
   border: 1px solid #e2e8f0;
 }

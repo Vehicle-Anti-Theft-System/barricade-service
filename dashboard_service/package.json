@@ -4,8 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode agent",
+    "dev:demo": "vite",
     "build": "vite build",
+    "build:agent": "vite build --mode agent",
     "lint": "eslint .",
     "preview": "vite preview"
   },

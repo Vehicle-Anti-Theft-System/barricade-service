@@ -22,22 +22,23 @@ Until RFID/ANPR/Fingerprint and the backend exist, the Agent runs a **mock verif
 | Item | Notes |
 |------|--------|
 | **FastAPI app** | `app.py` with lifespan; clears connections on shutdown. |
-| **Routes** | `GET /`, `GET /health`, `WebSocket /ws` (see `routes/`). |
+| **Routes** | `GET /`, `GET /health`, `POST /rfid/scan` (RFID service ingest), `WebSocket /ws` (see `routes/`). |
 | **Folder structure** | `core/` (events, connection), `routes/`, `services/`. |
 | **WebSocket protocol** | Outbound events and inbound commands match dashboard reducer. |
 | **Connection manager** | Single manager; broadcast for `session_reset`. |
 | **Mock verification** | `services/verification.py`: RFID → ANPR → Fingerprint → gate_decision. |
 | **Commands handled** | `simulate` / `start_verification`, `session_reset`, `manual_plate`, `open_gate`. |
 | **Employee ID in commands** | Dashboard sends `employee_id` with simulate/start_verification; agent accepts and passes to `run_mock_verification(..., employee_id=...)` for when backend is wired (backend stores it on alerts). |
+| **RFID ingest** | `POST /rfid/scan` — body `{ rfid_tag }` from RFID service only; calls backend `POST /api/verify/rfid` when `DEFAULT_BARRICADE_ID` + `BACKEND_BASE_URL` set; broadcasts `rfid_scanning` + `rfid_check_result`. |
 
 ### ❌ Not done
 
 | Item | Notes |
 |------|--------|
-| **RFID integration** | Poll RFID service; on tag read → send `rfid_check_result` (or call backend). |
+| **RFID hardware** | Replace mock tag queue with serial/SDK; keep posting same JSON to `/rfid/scan`. |
 | **ANPR integration** | Trigger snapshot from ANPR HTTP server; send `anpr_result` / `anpr_retry` / `anpr_manual`. |
 | **Fingerprint integration** | On scan from Fingerprint service → send `fingerprint_result`. |
-| **Backend integration** | HTTP client to Verification/Data service; replace mock with real validation. |
+| **Backend integration (full flow)** | ANPR/FP still mock; wire remaining steps to backend. |
 | **Auth** | No auth on WebSocket or HTTP; add if needed for production. |
 
 ---
@@ -54,10 +55,12 @@ api_agent/
 │   ├── events.py       # EVENT_* and CMD_* constants (contract with dashboard)
 │   └── connection.py   # ConnectionManager, get_manager()
 ├── routes/
-│   ├── __init__.py     # Single router aggregating root, health, ws
+│   ├── __init__.py     # Single router aggregating root, health, rfid, ws
 │   ├── root.py         # GET /
 │   ├── health.py       # GET /health
+│   ├── rfid_scan.py    # POST /rfid/scan — ingest from RFID service
 │   └── ws.py           # WebSocket /ws — command dispatch + mock flow
+├── config.py           # BACKEND_BASE_URL, DEFAULT_BARRICADE_ID
 ├── services/
 │   ├── __init__.py
 │   └── verification.py # event_message(), run_mock_verification()
@@ -72,8 +75,9 @@ api_agent/
 
 | Method / Type | Path     | Description |
 |---------------|----------|-------------|
-| GET           | `/`      | Service info and links (docs, health, ws URL). |
+| GET           | `/`      | Service info and links (docs, health, ws URL, RFID ingest hint). |
 | GET           | `/health`| Health check; returns `{ "status": "ok", "service": "api-agent" }`. |
+| POST          | `/rfid/scan` | Ingest `{ "rfid_tag": "..." }` from local RFID service (one-way); agent validates via backend + broadcasts WS. |
 | WebSocket     | `/ws`    | Verification events and commands (see below). |
 
 Default port: **8080**. Dashboard connects to `ws://localhost:8080/ws`.
@@ -134,6 +138,7 @@ uv run api-agent
 ## Dependencies
 
 - **FastAPI** — HTTP and WebSocket.
+- **httpx** — Async HTTP to central backend (RFID ingest path).
 - **uvicorn** — ASGI server.
 
 See `api_agent/pyproject.toml`. Workspace root lists `api-agent` so `uv run` from root installs and runs the agent.

@@ -15,6 +15,7 @@
 | **Frontend state machine** | ✅ Implemented | `useReducer` with RFID / ANPR / Fingerprint states per CONTEXT spec. |
 | **WebSocket integration** | ✅ Implemented | `useWebSocket` hook connects to `ws://localhost:8080/ws`. When connected, "Start Verification" sends to API Agent; when offline, local "Simulate Verification". |
 | **API Agent** | ✅ Implemented | `api_agent/` — FastAPI + WebSocket at `/ws`, routes: `/`, `/health`, `/ws`. Mock verification flow (RFID → ANPR → Fingerprint → gate). Commands: simulate, session_reset, manual_plate, open_gate. |
+| **RFID Service** | ✅ Mock implemented | `rfid_service/` — **Push-only** to API Agent: `POST /trigger` sends `{ rfid_tag }` to `POST /rfid/scan` on the agent (no pull/list/peek APIs). `GET /ui` for local test. Hardware serial still pending. |
 | **Camera feed** | ✅ Implemented | MJPEG at `http://localhost:8001/video_feed` with fallback placeholder when stream unavailable. |
 | **Session log panel** | ✅ Implemented | Live append, auto-scroll. |
 | **Status badges** | ✅ Implemented | RFID, ANPR, Fingerprint with full state set. |
@@ -29,9 +30,9 @@
 | Component | Status | Notes |
 |-----------|--------|------|
 | **ANPR HTTP server** | ❌ | FastAPI wrapper with MJPEG `/video_feed` and snapshot endpoint. |
-| **RFID Service** | ❌ | Python service polling RFID hardware. |
+| **RFID Service (hardware)** | ❌ | Replace mock service with real reader polling + SDK integration. |
 | **Fingerprint Service** | ❌ | Python service wrapping fingerprint scanner SDK. |
-| **Wire API Agent → Backend** | ❌ | API Agent currently uses mock flow; needs to call backend REST endpoints and pass `employee_id`. |
+| **Wire API Agent → Backend** | ⚠️ Partial | RFID ingest calls `POST /api/verify/rfid` when configured; ANPR/FP still mock / not wired. |
 | **Admin panel** | ❌ | Order registration, driver/truck management. |
 
 ---
@@ -198,7 +199,7 @@ TRUCK ARRIVES
 
 ```
 BARRICADE LOCAL SYSTEM (one per entry point)
-├── RFID Service          ❌ NOT BUILT — Python, polls hardware
+├── RFID Service          ⚠️ MOCK BUILT — push-only `POST` to API Agent `/rfid/scan`; hardware serial not built
 ├── ANPR Service          ⚠️ Library done, HTTP server not built
 │                         Needs: FastAPI + MJPEG /video_feed
 ├── Fingerprint Service   ❌ NOT BUILT — Python, hardware SDK
@@ -220,7 +221,8 @@ CENTRAL BACKEND (backend-service/)
 | Dashboard | API Agent | WebSocket | ✅ Connected at ws://localhost:8080/ws |
 | Dashboard | ANPR Service | HTTP MJPEG | ✅ URL wired, ANPR server missing |
 | API Agent | Dashboard | WebSocket | ✅ Events per spec (rfid_check_result, anpr_result, etc.) |
-| API Agent | Local services | HTTP REST | ❌ |
+| RFID Service | API Agent | HTTP POST `{ rfid_tag }` → `/rfid/scan` | ✅ One-way ingest |
+| API Agent | Local services (ANPR/FP) | HTTP REST | ❌ |
 | API Agent | Backend | HTTPS REST | ❌ (backend ready; agent still mock)
 
 ---
@@ -376,7 +378,8 @@ See `backend-service/CONTEXT.MD` for full schema. `alerts` includes `employee_id
 - [x] Gate control + auto-open toggle
 - [x] **API Agent** (FastAPI + WebSocket, routes: /, /health, /ws; mock verification flow)
 - [ ] **ANPR HTTP server** (FastAPI + `/video_feed` MJPEG + snapshot endpoint)
-- [ ] **RFID service** (Python, serial/SDK)
+- [x] **RFID mock service** (`rfid_service/` FastAPI + mock scan queue)
+- [ ] **RFID hardware service** (Python, serial/SDK)
 - [ ] **Fingerprint service** (Python, hardware SDK)
 
 ### Phase 2 — Backend & Verification
@@ -448,6 +451,14 @@ barricade-service/
 │   ├── services/           verification.py (mock flow)
 │   ├── app.py
 │   ├── main.py
+│   └── pyproject.toml
+├── rfid_service/           ✅ Mock RFID service (push-only)
+│   ├── app.py              `GET /ui`, `POST /trigger` → httpx POST to API Agent
+│   ├── push.py             `push_rfid_tag` → `{ rfid_tag }` only
+│   ├── service.py          In-memory tag cycle (mock hardware)
+│   ├── mock_data.py        Tag strings list
+│   ├── config.py           `API_AGENT_RFID_INGEST_URL`
+│   ├── main.py             uvicorn entry point (port 8002)
 │   └── pyproject.toml
 ├── dashboard_service/      ✅ React dashboard
 │   └── src/

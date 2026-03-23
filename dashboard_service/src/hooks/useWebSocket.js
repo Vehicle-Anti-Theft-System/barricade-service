@@ -12,11 +12,132 @@ export function useWebSocket(dispatch, options = {}) {
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
 
-  const simulateDemoFlow = useCallback(() => {
+  const simulateDemoFlow = useCallback((scenario = "success") => {
     if (!enableDemoMode || !dispatchRef.current) return;
     demoModeRef.current = true;
 
     const d = dispatchRef.current;
+    d({ type: "session_reset", payload: {} });
+
+    if (scenario === "rfid_mismatch") {
+      setTimeout(() => {
+        d({
+          type: "rfid_scanning",
+          payload: {},
+        });
+      }, 300);
+
+      setTimeout(() => {
+        d({
+          type: "rfid_check_result",
+          payload: {
+            status: "FAILED",
+            rfid: "TRK-9999",
+            alert_type: "rfid_unknown",
+            detail: "RFID tag not found in database",
+          },
+        });
+      }, 1400);
+
+      return;
+    }
+
+    if (scenario === "anpr_mismatch") {
+      setTimeout(() => {
+        d({
+          type: "rfid_scanning",
+          payload: {},
+        });
+      }, 300);
+      setTimeout(() => {
+        d({
+          type: "rfid_check_result",
+          payload: {
+            status: "VALIDATED",
+            rfid: "8829-4471-001",
+            truck_id: "TRK-047",
+            order_id: "ORD-2024-891",
+          },
+        });
+      }, 1300);
+      setTimeout(() => {
+        d({
+          type: "anpr_processing",
+          payload: {},
+        });
+      }, 1850);
+      setTimeout(() => {
+        d({
+          type: "anpr_result",
+          payload: {
+            status: "FAILED",
+            plate: "JH01CD5678",
+            expected_plate: "MH12AB4821",
+            alert_type: "plate_mismatch",
+            detail: "Expected MH12AB4821, detected JH01CD5678",
+          },
+        });
+      }, 3000);
+
+      return;
+    }
+
+    if (scenario === "fingerprint_mismatch") {
+      setTimeout(() => {
+        d({
+          type: "rfid_scanning",
+          payload: {},
+        });
+      }, 300);
+      setTimeout(() => {
+        d({
+          type: "rfid_check_result",
+          payload: {
+            status: "VALIDATED",
+            rfid: "8829-4471-001",
+            truck_id: "TRK-047",
+            order_id: "ORD-2024-891",
+          },
+        });
+      }, 1300);
+      setTimeout(() => {
+        d({
+          type: "anpr_processing",
+          payload: {},
+        });
+      }, 1850);
+      setTimeout(() => {
+        d({
+          type: "anpr_result",
+          payload: {
+            status: "VALIDATED",
+            plate: "MH12AB4821",
+            confidence: 0.97,
+          },
+        });
+      }, 2900);
+      setTimeout(() => {
+        d({
+          type: "fingerprint_scanning",
+          payload: {},
+        });
+      }, 3500);
+      setTimeout(() => {
+        d({
+          type: "fingerprint_result",
+          payload: {
+            status: "FAILED",
+            driver: "Amit Kumar",
+            fingerprint_id: "FP-11111",
+            alert_type: "driver_mismatch",
+            detail: "Fingerprint does not match assigned driver Amit Kumar",
+          },
+        });
+      }, 4700);
+
+      return;
+    }
+
     // Simulate RFID scan
     setTimeout(() => {
       d({

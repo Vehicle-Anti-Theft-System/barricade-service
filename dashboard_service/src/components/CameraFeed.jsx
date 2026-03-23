@@ -26,13 +26,13 @@ export function CameraFeed({ anpr, sessionPhase }) {
           Camera 1 — {useFallback ? "Placeholder" : "Live"}
         </div>
 
-        {anpr.status === ANPR_STATES.VALIDATED && (
+        {/* {anpr.status === ANPR_STATES.VALIDATED && (
           <div className="detection-overlay">
             <span className="detection-label">
               Plate Detected {Math.round((anpr.confidence ?? 0) * 100)}%
             </span>
           </div>
-        )}
+        )} */}
         {isProcessing && (
           <div className="scanning-overlay">
             <span className="pulse-ring" />

@@ -31,7 +31,7 @@ export function DriverCard({ fingerprint }) {
       {isValidated && (
         <div className="driver-body">
           <div className="driver-photo">
-            <PersonIcon sx={{ fontSize: 32, color: "#94a3b8" }} />
+            <PersonIcon sx={{ fontSize: 32, color: "#94a3b8", width: "100%", height: "100%" }} />
           </div>
           <div className="driver-details">
             <div className="driver-name">{fingerprint?.driver}</div>

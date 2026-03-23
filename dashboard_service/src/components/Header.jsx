@@ -1,7 +1,24 @@
-import { IconButton } from "@mui/material";
+import {
+  Box,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+} from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 
-export function Header({ wsConnected, onStartVerification, user, onLogout }) {
+export function Header({
+  wsConnected,
+  onStartVerification,
+  simulateCase,
+  onSimulateCaseChange,
+  showSimulationControls = true,
+  startDisabled = false,
+  offlineStatusLabel = "DEMO",
+  user,
+  onLogout,
+}) {
   const initials = user?.name
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
     : "?";
@@ -13,18 +30,60 @@ export function Header({ wsConnected, onStartVerification, user, onLogout }) {
       </IconButton>
       <div className="header-center">
         <span className={`status-dot ${wsConnected ? "online" : "offline"}`} />
-        Status: <strong>{wsConnected ? "ONLINE" : "DEMO"}</strong>
+        Status: <strong>{wsConnected ? "ONLINE" : offlineStatusLabel}</strong>
         <span className="header-divider">|</span>
         Checkpoint: {user?.checkpoint || "North Gate"}
         {onStartVerification && (
-          <button
-            className="simulate-btn"
-            onClick={onStartVerification}
-            type="button"
-            title={wsConnected ? "Start verification (API Agent)" : "Simulate verification (demo)"}
-          >
-            {wsConnected ? "Start Verification" : "Simulate Verification"}
-          </button>
+          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1.25, ml: 1 }}>
+            {showSimulationControls && (
+              <FormControl
+                size="small"
+                sx={{
+                  minWidth: 190,
+                  "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.75)" },
+                  "& .MuiInputLabel-root.Mui-focused": { color: "rgba(255,255,255,0.9)" },
+                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(255,255,255,0.35)" },
+                  "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(255,255,255,0.55)",
+                  },
+                  "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(255,255,255,0.85)",
+                  },
+                  "& .MuiSelect-select": { color: "white", py: 0.75 },
+                  "& .MuiSvgIcon-root": { color: "white" },
+                }}
+              >
+                <InputLabel id="simulate-case-label">Simulation Case</InputLabel>
+                <Select
+                  labelId="simulate-case-label"
+                  id="simulate-case"
+                  value={simulateCase}
+                  label="Simulation Case"
+                  onChange={(e) => onSimulateCaseChange?.(e.target.value)}
+                >
+                  <MenuItem value="success">Success</MenuItem>
+                  <MenuItem value="rfid_mismatch">RFID mismatch</MenuItem>
+                  <MenuItem value="anpr_mismatch">ANPR mismatch</MenuItem>
+                  <MenuItem value="fingerprint_mismatch">Fingerprint mismatch</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            <button
+              className="simulate-btn"
+              onClick={onStartVerification}
+              disabled={startDisabled}
+              type="button"
+              title={
+                wsConnected
+                  ? "Start verification (API Agent)"
+                  : showSimulationControls
+                    ? "Simulate verification (demo)"
+                    : "API Agent is offline"
+              }
+            >
+              {wsConnected ? "Start Verification" : showSimulationControls ? "Simulate Verification" : "Start Verification"}
+            </button>
+          </Box>
         )}
       </div>
       <div className="user-info">

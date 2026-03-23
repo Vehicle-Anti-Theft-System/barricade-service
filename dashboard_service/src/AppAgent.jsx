@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import "./App.css";
 import {
@@ -24,49 +24,35 @@ const theme = createTheme({
   },
 });
 
-export default function App() {
+export default function AppAgent() {
   const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
   const [state, dispatch] = useVerificationState();
   const [autoOpen, setAutoOpen] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
   const [manualPlateOpen, setManualPlateOpen] = useState(false);
   const [rescanning, setRescanning] = useState(false);
-  const [simulateCase, setSimulateCase] = useState("success");
-  const wsRef = useRef(null);
 
-  const { simulateDemoFlow, send } = useWebSocket(dispatch, {
+  const { send } = useWebSocket(dispatch, {
     onConnect: () => setWsConnected(true),
     onDisconnect: () => setWsConnected(false),
-    enableDemoMode: true,
+    enableDemoMode: false,
   });
 
   function handleStartVerification() {
-    if (wsConnected && send) {
-      send({
-        event: "simulate",
-        scenario: simulateCase,
-        employee_id: user?.employeeId ?? null,
-        auto_open: autoOpen,
-      });
-    } else {
-      simulateDemoFlow?.(simulateCase);
-    }
+    if (!wsConnected || !send) return;
+    send({
+      event: "simulate",
+      employee_id: user?.employeeId ?? null,
+      auto_open: autoOpen,
+    });
   }
 
-  wsRef.current = { simulateDemoFlow: handleStartVerification };
-
-  // Auto-open gate when verification complete and autoOpen is on
   useEffect(() => {
-    if (
-      state.sessionPhase === "complete" &&
-      autoOpen &&
-      !state.gateOpen
-    ) {
+    if (state.sessionPhase === "complete" && autoOpen && !state.gateOpen) {
       dispatch({ type: "gate_decision", payload: { open: true, method: "auto" } });
     }
   }, [state.sessionPhase, autoOpen, state.gateOpen, dispatch]);
 
-  // Reset gate animation after a delay
   useEffect(() => {
     if (state.gateAnim) {
       const t = setTimeout(() => {
@@ -76,7 +62,6 @@ export default function App() {
     }
   }, [state.gateAnim, dispatch]);
 
-  // Show manual plate entry when ANPR requests it
   useEffect(() => {
     if (state.anpr?.status === ANPR_STATES.MANUAL_ENTRY) {
       setManualPlateOpen(true);
@@ -119,8 +104,9 @@ export default function App() {
           <Header
             wsConnected={wsConnected}
             onStartVerification={handleStartVerification}
-            simulateCase={simulateCase}
-            onSimulateCaseChange={setSimulateCase}
+            showSimulationControls={false}
+            startDisabled={!wsConnected}
+            offlineStatusLabel="OFFLINE"
             user={user}
             onLogout={logout}
           />
