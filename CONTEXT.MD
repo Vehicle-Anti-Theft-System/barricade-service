@@ -1,183 +1,97 @@
-# Mine Site Anti-Theft Vehicle Detection System
+# Mine Site Anti-Theft Vehicle Detection System — Barricade Edge
 
-## Implementation Status (as of 2026-03-18)
+## Implementation Status (last updated: 2026-03)
 
-> Use this file to restore full project context in any future conversation.
+> Use this file to restore full project context in any future conversation.  
+> **Scope:** `barricade-service/` only (local edge). Central backend lives in `backend-service/` (typically deployed on AWS).  
+> **Full combined snapshot (edge + backend):** `../backend-service/context_old.md`.
 
-### ✅ DONE
+### Deployment model
+
+| Location | What runs |
+|----------|-----------|
+| **Local (gate PC)** | `barricade-service`: **api_agent**, **anpr_service**, **rfid_service**, **dashboard_service**. Start all four with `./run-barricade.sh` (does **not** start the backend). |
+| **Remote (e.g. AWS)** | **backend-service**: FastAPI + MongoDB (verification, CRUD, alerts). |
+| **Configuration** | In `barricade-service/.env`: `BACKEND_BASE_URL` (HTTPS API base, no trailing slash), `DEFAULT_BARRICADE_ID` (UUID of this gate in the remote DB). Optional: `RUN_LOCAL_BACKEND` is **not** used by `run-barricade.sh`; run `backend-service` separately for local dev with `BACKEND_BASE_URL=http://localhost:8000`. |
+
+### Default ports (local edge)
+
+| Service | Port | Notes |
+|---------|------|--------|
+| **api_agent** | 8080 | HTTP + WebSocket `ws://localhost:8080/ws` |
+| **anpr_service** | 8001 | `GET /health`, `GET /video_feed` (MJPEG), `POST /capture` |
+| **rfid_service** | 8002 | `GET /ui`, `POST /trigger`, `GET /health` |
+| **dashboard_service** | 5173 | Vite dev (`npm run dev`); `VITE_*` hosts in `.env` |
+
+---
+
+### ✅ DONE (barricade edge)
 
 | Component | Status | Notes |
 |-----------|--------|------|
-| **Alert employee tracking** | ✅ Implemented | Dashboard sends `employee_id` with Start Verification (simulate); API Agent accepts and passes to mock flow (for when backend is wired). Backend stores `employee_id` on alerts — see `backend-service/CONTEXT.MD`. |
-| **ANPR Service** | ✅ Library implemented | `anpr_service/` — YOLOv8 + EasyOCR + SORT. Supports `process_image`, `process_video`, `process_camera`, `capture_and_process_frame`. No HTTP/FastAPI server yet. |
-| **React Dashboard** | ✅ Implemented | `dashboard_service/` — Vite + React + Material UI v5. Full verification UI per spec. |
-| **Employee login** | ✅ Implemented | Login page (Employee ID + password). `useAuth` hook, localStorage session. Header shows user + Logout. Demo: any ID + password `barricade123`. |
-| **Frontend state machine** | ✅ Implemented | `useReducer` with RFID + ANPR only (2-factor). |
-| **WebSocket integration** | ✅ Implemented | `useWebSocket` hook connects to `ws://localhost:8080/ws`. When connected, "Start Verification" sends to API Agent; when offline, local "Simulate Verification". |
-| **API Agent** | ✅ Implemented | `api_agent/` — FastAPI + WebSocket at `/ws`, routes: `/`, `/health`, `/rfid/scan`, `/ws`. Mock flow: RFID → ANPR → gate. Commands: simulate, session_reset, manual_plate, open_gate. |
-| **RFID Service** | ✅ Mock implemented | `rfid_service/` — **Push-only** to API Agent: `POST /trigger` sends `{ rfid_tag }` to `POST /rfid/scan` on the agent (no pull/list/peek APIs). `GET /ui` for local test. Hardware serial still pending. |
-| **Camera feed** | ✅ Implemented | MJPEG at `http://localhost:8001/video_feed` with fallback placeholder when stream unavailable. |
-| **Session log panel** | ✅ Implemented | Live append, auto-scroll. |
-| **Status badges** | ✅ Implemented | RFID + ANPR; assigned driver card from order (RFID step). |
-| **RESCAN button** | ✅ Implemented | Resets session; sends `session_reset` to API Agent when connected. |
-| **MANUAL PLATE ENTRY** | ✅ Implemented | Dialog + flow when ANPR needs manual input. |
-| **Gate control** | ✅ Implemented | Auto-open toggle, Open Barricade button (disabled until all verified). |
-| **Main entry** | ✅ Implemented | `main.py` — processes static image via ANPR. |
-| **Backend service** | ✅ Implemented | Central backend in `backend-service/` — Verification, Data/Query, Alert services (MongoDB + Beanie). Alerts include `employee_id` when provided. |
+| **2-factor verification** | ✅ | **RFID + ANPR only** (no fingerprint; see `backend-service` for schema). |
+| **ANPR library** | ✅ | `anpr_service/anpr_service.py` — YOLOv8 + EasyOCR + SORT: `process_image`, `process_video`, `process_camera`, `capture_and_process_frame`. |
+| **ANPR HTTP server** | ✅ | `anpr_service/server.py` — FastAPI: `GET /health`, `GET /video_feed` (MJPEG for dashboard), `POST /capture` (single-frame plate read). Entry: `uv run anpr-service` or workspace script. |
+| **API Agent** | ✅ | `api_agent/` — FastAPI + WebSocket `/ws`. Routes: `GET /`, `GET /health`, `POST /rfid/scan`, `WebSocket /ws`. **Live flow:** RFID ingest → backend `POST /api/verify/rfid` → on success, background **ANPR pipeline** (`POST` local ANPR `/capture` → backend `POST /api/verify/anpr` → optional `POST /api/verify/gate-open`) → WebSocket events. **Mock flow:** `simulate` / `start_verification` for demos. **Session:** `services/session.py` holds RFID context for `manual_plate` / `open_gate`. **Config:** `api_agent/config.py` (`BACKEND_BASE_URL`, `ANPR_SERVICE_URL`, `DEFAULT_BARRICADE_ID`, retries). |
+| **RFID Service** | ✅ Mock | `rfid_service/` — **Unidirectional:** only **sends** `{ "rfid_tag" }` to API Agent `POST /rfid/scan`. `POST /trigger` cycles mock tags + `httpx` POST; `GET /ui` for testing. **No** pull/peek/list APIs. `config.py`: `API_AGENT_RFID_INGEST_URL`. |
+| **React Dashboard** | ✅ | `dashboard_service/` — Vite + React + **Material UI** (`@mui/material`). Login (`useAuth`), verification UI, `useVerificationState` (RFID + ANPR), `useWebSocket`, `constants.js` (`WEBSOCKET_URL`, `MJPEG_STREAM_URL` via `VITE_*`). |
+| **Camera feed** | ✅ | `CameraFeed.jsx` → `http://<VITE_ANPR_HOST>/video_feed` with placeholder on error. |
+| **WebSocket protocol** | ✅ | Events/commands in `api_agent/core/events.py`; dashboard reducer aligns with `rfid_scanning`, `rfid_check_result`, `anpr_processing`, `anpr_result`, `anpr_retry`, `anpr_manual`, `gate_decision`, `session_reset`. |
+| **Run script** | ✅ | `run-barricade.sh` — starts **api_agent → anpr_service → rfid_service → dashboard_service** (order tuned for dependencies). Optional `SKIP_ANPR=1`, `SKIP_DASHBOARD=1`. Loads `.env`. |
+| **Logging** | ✅ | `LOG_LEVEL` in `.env`. API Agent: `logging_config.py`, logs on routes, verification, session, RFID ingest, WebSocket. ANPR `server.py`, RFID `logging_config.py` + module loggers. Dashboard: `src/utils/logger.js` (`BARRICADE_LOG_LEVEL` in localStorage). |
+| **Documentation** | ✅ | `README.md`, `api_agent/README.md`, `anpr_service/README.md`, `rfid_service/README.md`, `dashboard_service/README.md`, `.env.example`. |
+| **Root `main.py`** | ⚠️ | Optional demo script processing a static image via ANPR library (not part of the four-service runtime). |
 
-### ❌ NOT DONE (what's left)
+### Central backend (outside this repo path)
 
 | Component | Status | Notes |
 |-----------|--------|------|
-| **ANPR HTTP server** | ❌ | FastAPI wrapper with MJPEG `/video_feed` and snapshot endpoint. |
-| **RFID Service (hardware)** | ❌ | Replace mock service with real reader polling + SDK integration. |
-| **Wire API Agent → Backend** | ⚠️ Partial | RFID ingest calls `POST /api/verify/rfid` when configured; ANPR path still mock / not fully wired. |
-| **Admin panel** | ❌ | Order registration, driver/truck management. |
+| **backend-service** | ✅ Implemented | See `../backend-service/CONTEXT.MD` — MongoDB (Beanie), verification APIs (`/api/verify/rfid`, `/anpr`, `/gate-open`), alerts, CRUD. Deployed separately (e.g. AWS). |
+
+### ❌ NOT DONE (what’s left)
+
+| Item | Notes |
+|------|--------|
+| **RFID hardware** | Replace mock queue + `POST /trigger` with serial/SDK reader; keep same push-only contract to API Agent. |
+| **Admin panel** | Order/driver/truck management UI (backend may already expose APIs). |
+| **Hardening** | Offline queue, snapshot storage to S3, production TLS/mTLS for agent↔backend, etc. |
 
 ---
 
 ## 1. Problem Statement
 
-At mine sites in India, cargo theft (coal, fuel, etc.) occurs through **truck-driver swapping**:
-- Driver A is assigned Truck A, but brings Truck B to the site
-- Driver B brings Truck A (which belongs to Driver A)
-- Trucks swap license plates to avoid detection
-- Drivers collude to steal goods during transit
+At mine sites in India, cargo theft (coal, fuel, etc.) occurs through **truck-driver swapping** (wrong truck, swapped plates, collusion). There is no automated way to ensure the **correct truck + correct plate** for the **registered order** at the gate.
 
-There is currently no automated way for mine sites to verify that the correct driver and correct truck are entering together.
+### Deployment model (summary)
 
-### Deployment model
-
-- **Barricade edge** (`barricade-service/`): runs **on the local machine at the gate** (ANPR, API Agent, RFID, dashboard). Use `./run-barricade.sh` to start these only — it does **not** start the backend.
-- **Central backend** (`backend-service/`): runs **remotely** (e.g. **AWS**): FastAPI + MongoDB. Configure the API Agent with `BACKEND_BASE_URL` in `barricade-service/.env` (HTTPS base URL, no trailing slash). `DEFAULT_BARRICADE_ID` must match a barricade document in that deployment’s database.
-- **Local backend dev:** run `backend-service` and MongoDB separately on your laptop; set `BACKEND_BASE_URL=http://localhost:8000` in `barricade-service/.env`.
+- **Barricade edge** (`barricade-service/`): runs on the **local PC** at the gate.
+- **Central backend** (`backend-service/`): runs **remotely** (e.g. **AWS**): FastAPI + MongoDB.
+- API Agent reaches the backend only via **`BACKEND_BASE_URL`** in `barricade-service/.env` (no bundled backend in `run-barricade.sh`).
 
 ---
 
 ## 2. Solution Overview
 
-A **2-factor identity verification system** (RFID + ANPR) installed at mine site barricade entry points.
-
-Before any truck can enter a mine site, **two** checks must match a pre-registered order in the central database:
-
-1. **RFID** — hidden tag on the truck (like FASTag), driver is unaware of it
-2. **ANPR** — license plate recognition via camera (YOLOv8 + EasyOCR), cross-checked with the truck record from RFID
-
-Both must be verified **in sequence** and must match the same registered order. If either fails, the barricade stays locked.
-
-### System Architecture (High-Level)
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    BARRICADE CLIENT                      │
-│  (Local machine at each mine site entry point)           │
-│                                                          │
-│  ┌──────────────┐   ┌──────────────┐                      │
-│  │ RFID Service │   │ ANPR Service │                      │
-│  │ (continuous  │   │ (YOLOv8 +    │                      │
-│  │  polling)    │   │  EasyOCR)    │                      │
-│  └──────┬───────┘   └──────┬───────┘                      │
-│         │                  │                              │
-│         └──────────────────┴──────────────────────────────┘
-│                            │                              │
-│                  ┌─────────▼──────────┐                  │
-│                  │   API Agent        │                  │
-│                  │   (Orchestrator)   │                  │
-│                  └─────────┬──────────┘                  │
-│                            │                             │
-│         ┌──────────────────▼───────────────────┐         │
-│         │         React Dashboard              │         │
-│         │  Camera | Logs | Status | Gate       │         │
-│         └──────────────────────────────────────┘         │
-└───────────────────────────┬─────────────────────────────┘
-                            │ HTTPS / WebSocket
-┌───────────────────────────▼─────────────────────────────┐
-│                    CENTRAL BACKEND                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │
-│  │ Data/Query  │  │   Alert     │  │  Verification   │   │
-│  │   Service   │  │   Service   │  │    Service      │   │
-│  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘   │
-│         └────────────────┴──────────────────┘            │
-│                          │                               │
-│               ┌──────────▼──────────┐                    │
-│               │   Central Database  │                    │
-│               │  (Orders, Trucks,   │                    │
-│               │   Drivers, Logs)    │                    │
-│               └─────────────────────┘                    │
-└─────────────────────────────────────────────────────────┘
-```
+**2-factor verification** at the barricade: **RFID** (truck tag) then **ANPR** (license plate). Both must match the order in the central DB. **Fingerprint** is not used.
 
 ---
 
-## 3. How It Works — End to End
+## 3. How It Works — End to End (implemented behavior)
 
-### Pre-condition (before truck arrives)
-- A company admin registers an **order** in the system: linking a specific truck + specific driver + mine site + drop site + goods type + scheduled date
-- Truck already has RFID tag physically attached (driver doesn't know about it)
-- All master data (RFID, license plate, driver, Aadhar, phone, photo) is pre-loaded in the central DB
+### Preconditions
 
-### At the barricade
+- Order + truck + driver exist in the **remote** backend DB; barricade record exists; `DEFAULT_BARRICADE_ID` matches this gate.
 
-**Step 1 — RFID**
-- RFID service runs continuously on the local barricade PC
-- When a truck arrives, RFID tag is automatically scanned
-- API Agent sends RFID to backend → backend checks central DB
-- **PASS:** RFID found, active order exists → auto-trigger ANPR
-- **FAIL:** RFID not found OR no active order → barricade locked, alert raised, rescan available
+### Live path (hardware / mock trigger)
 
-**Step 2 — ANPR**
-- Triggered automatically when RFID passes (no button press needed)
-- ANPR service captures a **single snapshot** from the camera (USB or RTSP)
-- YOLOv8 detects the license plate region
-- EasyOCR converts plate image to text string
-- API Agent sends RFID + plate to backend → backend cross-checks them against the same order
-- **Retry logic:** ANPR runs up to 3 times if OCR confidence is low
-- **Manual fallback:** If 3x fails, guard manually types the plate number in the dashboard
-- **PASS:** Plate matches RFID / order record → verification complete (ready for gate)
-- **FAIL:** Plate mismatch → barricade locked, alert raised ("possible plate swap")
+1. **RFID** — `rfid_service` sends a tag to **API Agent** `POST /rfid/scan` (one-way). Agent broadcasts `rfid_scanning`, calls backend **`POST /api/verify/rfid`**, broadcasts `rfid_check_result`.
+2. **If RFID VALIDATED** — Agent starts **ANPR pipeline** (async): `anpr_processing` → **`POST ANPR /capture`** (retries + `anpr_retry` / `anpr_manual` if needed) → backend **`POST /api/verify/anpr`** → broadcasts `anpr_result`; on success may call **`POST /api/verify/gate-open`** and `gate_decision`.
+3. **Dashboard** — Subscribes via WebSocket; **manual plate** and **open gate** commands go to the agent when connected.
+4. **Simulate** — `simulate` / `start_verification` runs **mock** delays only (no backend), for UI demos.
 
-**Step 3 — Gate Control**
-- Backend returns PASS
-- Dashboard shows green / all-clear state
-- **Auto-open ON:** Barricade opens automatically
-- **Auto-open OFF:** Guard manually clicks "Open Barricade" button
-- Entry is logged in the central DB with timestamp, snapshot, all IDs
+### Verification flow (state machine)
 
-**Step 4 — Reset**
-- After gate opens (or session is denied), all statuses reset to WAITING
-- System is ready for the next truck
-
-### Verification Flow (State Machine)
-
-```
-TRUCK ARRIVES
-      │
-      ▼
-[RFID SCAN] ──── continuous polling ────►
-      │
-   match?
-   NO  ──► Alert raised + barricade stays LOCKED
-   YES ──►
-      │
-      ▼
-[ANPR TRIGGERED] (auto, no button needed)
-   - Capture frame → YOLOv8 plate detection → EasyOCR
-   - Retry up to 3x on failure
-   - Manual entry fallback if 3x fails
-      │
-   RFID + plate match in DB?
-   NO  ──► Alert: "Plate mismatch" + LOCKED
-   YES ──►
-      │
-      ▼
-[AUTO OPEN] or [Guard clicks Open Barricade]
-      │
-      ▼
-[LOG: entry confirmed, timestamp]
-      │
-      ▼
-[RESET → Waiting for next truck]
-```
+High-level: **RFID → ANPR → gate** (see `useVerificationState.js` for UI states).
 
 ---
 
@@ -185,17 +99,17 @@ TRUCK ARRIVES
 
 ```
 BARRICADE LOCAL SYSTEM (one per entry point)
-├── RFID Service          ⚠️ MOCK BUILT — push-only `POST` to API Agent `/rfid/scan`; hardware serial not built
-├── ANPR Service          ⚠️ Library done, HTTP server not built
-│                         Needs: FastAPI + MJPEG /video_feed
-├── API Agent             ✅ DONE — FastAPI + WebSocket (core/, routes/, services/)
-└── React Dashboard       ✅ DONE — Vite + React + MUI v5, login gate, verification UI
+├── RFID Service          ✅ Mock — push-only POST → API Agent /rfid/scan
+├── ANPR Service          ✅ Library + FastAPI HTTP (MJPEG + /capture)
+├── API Agent             ✅ FastAPI + WebSocket orchestrator
+│                         ├── routes: root, health, rfid_scan, ws
+│                         ├── services: verification (mock + live), session
+│                         └── config: BACKEND_BASE_URL, ANPR_SERVICE_URL, …
+└── React Dashboard       ✅ Vite + MUI
 
-CENTRAL BACKEND (backend-service/ — deployed on AWS / cloud, not bundled with barricade)
-├── Verification Service  ✅ 2-factor check (RFID + ANPR); accepts optional employee_id
-├── Data/Query Service    ✅ Full CRUD
-├── Alert Service         ✅ Auto-created on failures; stores employee_id
-├── Central Database      ✅ MongoDB (Beanie)
+CENTRAL BACKEND (backend-service/ — AWS / cloud)
+├── Verification Service  ✅ RFID + ANPR + gate-open
+├── Data/Query / Alerts   ✅ MongoDB (Beanie)
 └── Admin Panel           ❌
 ```
 
@@ -203,178 +117,71 @@ CENTRAL BACKEND (backend-service/ — deployed on AWS / cloud, not bundled with 
 
 | From | To | Protocol | Status |
 |------|----|----------|--------|
-| Dashboard | API Agent | WebSocket | ✅ Connected at ws://localhost:8080/ws |
-| Dashboard | ANPR Service | HTTP MJPEG | ✅ URL wired, ANPR server missing |
-| API Agent | Dashboard | WebSocket | ✅ Events per spec (rfid_check_result, anpr_result, etc.) |
-| RFID Service | API Agent | HTTP POST `{ rfid_tag }` → `/rfid/scan` | ✅ One-way ingest |
-| API Agent | Local ANPR service | HTTP REST | ❌ |
-| API Agent | Backend | HTTPS REST | ❌ (backend ready; agent still mock)
+| Dashboard | API Agent | WebSocket | ✅ `ws://localhost:8080/ws` (configurable via `VITE_API_AGENT_HOST`) |
+| Dashboard | ANPR Service | HTTP MJPEG | ✅ `http://localhost:8001/video_feed` (via `VITE_ANPR_HOST`) |
+| API Agent | Dashboard | WebSocket | ✅ Events per `core/events.py` |
+| RFID Service | API Agent | HTTP POST `{ "rfid_tag" }` → `/rfid/scan` | ✅ One-way |
+| API Agent | ANPR Service | HTTP `POST /capture` | ✅ |
+| API Agent | Backend | HTTPS REST | ✅ When `BACKEND_BASE_URL` + `DEFAULT_BARRICADE_ID` set |
 
 ---
 
-## 5. Frontend State Machine (implemented)
+## 5. Frontend State Machine
 
-States are in `dashboard_service/src/constants.js` and `useVerificationState.js`.
+Implemented in `dashboard_service/src/constants.js` and `useVerificationState.js`.
 
-### Dashboard Layout
+### RFID states
 
-Login gate: employee signs in (Employee ID + password) before seeing the dashboard. Session stored in localStorage; header shows user name and Logout.
+`WAITING` | `SCANNING` | `IN_PROGRESS` | `VALIDATED` | `FAILED`
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    BARRICADE DASHBOARD                        │
-│                                                              │
-│  ┌─────────────────────┐    ┌─────────────────────────────┐  │
-│  │  [Camera Feed]      │    │  RFID     [●SCAN / ✓ / ✗]   │  │
-│  │  MJPEG stream or    │    │  ANPR     [●HOLD / ✓ / ✗]   │  │
-│  │  placeholder        │    │  Driver   (from order)      │  │
-│  └─────────────────────┘    └─────────────────────────────┘  │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐     │
-│  │  Session Log                                         │     │
-│  │  ── RFID scanned                                     │     │
-│  │  ── ANPR — Plate MH12AB4821 (98%)                    │     │
-│  │  ── Verification complete — gate ready               │     │
-│  └─────────────────────────────────────────────────────┘     │
-│                                                              │
-│  [RESCAN]          [MANUAL PLATE ENTRY]                       │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐     │
-│  │  ⛔ LOCKED  /  ✅ OPEN BARRICADE                     │     │
-│  │  [Toggle: Auto-open ON/OFF]                          │     │
-│  └─────────────────────────────────────────────────────┘     │
-└─────────────────────────────────────────────────────────────┘
-```
+### ANPR states
 
-### RFID States
-| State | Meaning |
-|-------|---------|
-| WAITING | Default. RFID polling, no truck present |
-| SCANNING | Tag detected, reading in progress |
-| IN_PROGRESS | Sent to backend, awaiting result |
-| VALIDATED | Found in DB, active order exists |
-| FAILED | Not found or no order. Session blocked |
+`ON_HOLD` | `TRIGGERED` | `PROCESSING` | `RETRY` | `MANUAL_ENTRY` | `IN_PROGRESS` | `VALIDATED` | `FAILED`
 
-### ANPR States
-| State | Meaning |
-|-------|---------|
-| ON_HOLD | Waiting for RFID to pass |
-| TRIGGERED | RFID passed, capturing frame |
-| PROCESSING | YOLOv8 + EasyOCR running |
-| RETRY | Low confidence, recapturing |
-| MANUAL_ENTRY | 3x failed, guard types plate manually |
-| IN_PROGRESS | Plate + RFID sent to backend |
-| VALIDATED | Plate matches RFID record |
-| FAILED | Mismatch. Session blocked |
+### WebSocket — outbound (API Agent → Dashboard)
 
-### WebSocket Events (API Agent → Dashboard)
-```json
-{ "event": "rfid_check_result", "status": "VALIDATED", "rfid": "TRK-0042", "order_id": "ORD-2024-891" }
-{ "event": "anpr_result", "status": "VALIDATED", "plate": "MH04AB1234", "confidence": 0.94 }
-{ "event": "anpr_retry", "attempt": 2 }
-{ "event": "anpr_manual", "reason": "3x OCR failure" }
-{ "event": "gate_decision", "open": true, "method": "auto" }
-{ "event": "alert_raised", "type": "plate_mismatch", "detail": "..." }
-{ "event": "session_reset" }
-```
+Event names are in `api_agent/core/events.py`. Typical payloads:
+
+- `rfid_scanning`
+- `rfid_check_result` — `status`, `rfid`, optional `order_id`, `truck_id`, `driver_name`, `expected_plate`, or failure `detail` / `alert_type`
+- `anpr_processing`
+- `anpr_retry` — `attempt`
+- `anpr_manual` — after max capture retries without plate
+- `anpr_result` — `status`, `plate`, `confidence`, optional mismatch fields
+- `gate_decision` — `open`, `method` (`auto` | `manual`)
+- `session_reset`
+- `alert_raised` (when used)
+
+### WebSocket — inbound (Dashboard → API Agent)
+
+- `simulate` / `start_verification` — mock flow; optional `auto_open`, `employee_id`
+- `session_reset`
+- `manual_plate` — `{ "plate": "..." }`
+- `open_gate`
 
 ---
 
 ## 6. Alert System
 
-Backend (`backend-service/`) auto-creates alerts on verification failures. Alerts store `employee_id` (logged-in barricade employee) when provided for investigation.
-
-| Alert Type | Trigger |
-|------------|---------|
-| rfid_unknown | RFID tag not found in DB |
-| rfid_no_order | RFID found but no active order for today |
-| plate_mismatch | RFID matched but plate belongs to a different truck |
-| plate_swap_suspected | RFID matched, plate from another registered truck |
-| anpr_failure | ANPR failed 3x, manual entry required |
+Backend (`backend-service/`) creates alerts on verification failures. Types include `rfid_unknown`, `rfid_no_order`, `plate_mismatch`, `plate_swap_suspected`. Details: `backend-service/CONTEXT.MD`.
 
 ---
 
 ## 7. Database Schema
 
-Full schema (7 tables, UUID PKs) is implemented in `backend-service/` with Alembic. Alerts table includes `employee_id` (VARCHAR 100, nullable) for the logged-in barricade employee. Summary:
-
-### trucks
-| Column | Type |
-|--------|------|
-| id | UUID PK |
-| rfid_tag | VARCHAR UNIQUE |
-| license_plate | VARCHAR UNIQUE |
-| make_model | VARCHAR |
-| owner_name | VARCHAR |
-| registered_at | TIMESTAMP |
-| is_active | BOOLEAN |
-
-### drivers
-| Column | Type |
-|--------|------|
-| id | UUID PK |
-| full_name | VARCHAR |
-| aadhar_number | VARCHAR UNIQUE |
-| phone_number | VARCHAR |
-| photo_url | TEXT |
-| is_active | BOOLEAN |
-
-### orders
-| Column | Type |
-|--------|------|
-| id | UUID PK |
-| truck_id | UUID FK → trucks |
-| driver_id | UUID FK → drivers |
-| mine_site_id | UUID FK → sites |
-| drop_site_id | UUID FK → sites |
-| goods_type | VARCHAR |
-| scheduled_date | DATE |
-| status | ENUM |
-| created_by | UUID FK |
-
-### entry_logs, alerts, barricades, sites
-See `backend-service/CONTEXT.MD` for full schema. `alerts` includes `employee_id` for investigation.
+**Not in this repo.** Central data lives in **MongoDB** in the backend deployment. Collections and fields: see **`backend-service/CONTEXT.MD`**. Do not assume SQL/Alembic unless the backend doc says so.
 
 ---
 
-## 8. Build Roadmap
+## 8. Build Roadmap (condensed)
 
-### Phase 1 — Core Local Services
-- [x] ANPR library (YOLOv8 + EasyOCR + SORT)
-- [x] React dashboard (full UI per spec)
-- [x] Employee login page (useAuth, LoginPage, header user + logout)
-- [x] WebSocket hook + demo mode
-- [x] Camera feed (MJPEG URL + fallback)
-- [x] Status panel, session log, RESCAN, manual plate entry
-- [x] Gate control + auto-open toggle
-- [x] **API Agent** (FastAPI + WebSocket, routes: /, /health, /ws; mock verification flow)
-- [ ] **ANPR HTTP server** (FastAPI + `/video_feed` MJPEG + snapshot endpoint)
-- [x] **RFID mock service** (`rfid_service/` FastAPI + mock scan queue)
-- [ ] **RFID hardware service** (Python, serial/SDK)
-### Phase 2 — Backend & Verification
-- [x] Backend (in `backend-service/`): MongoDB + Beanie, CRUD, Verification Service, Alert Service, seed data
-- [x] Alert employee tracking (dashboard sends `employee_id`; backend stores on alerts)
-- [ ] Wire API Agent → Backend (pass `employee_id` in verify requests)
-- [ ] End-to-end: RFID → ANPR → gate with live backend
-
-### Phase 3 — Integration & Polish
-- [x] Connect real WebSocket (API Agent) — dashboard uses it when online
-- [ ] Connect real MJPEG stream (ANPR server)
-- [ ] ANPR 3x retry logic in ANPR service
-- [ ] Remove demo mode or keep as fallback
-
-### Phase 4 — Alerts & Hardening
-- [ ] Alert Service
-- [ ] Alert display on dashboard
-- [ ] Snapshot storage on every ANPR capture
-- [ ] Offline resilience
-- [ ] Error handling for hardware failures
-
-### Phase 5 — Admin & Multi-site
-- [ ] Admin panel (order registration, driver/truck management)
-- [ ] Multi-barricade support
-- [ ] Audit log & reporting
-- [ ] SMS/push alerts to supervisor
+| Phase | Items |
+|-------|--------|
+| **Edge core** | [x] ANPR library + HTTP server; [x] API Agent + RFID ingest + live ANPR pipeline; [x] Dashboard; [x] `run-barricade.sh`; [x] env + logging |
+| **RFID hardware** | [ ] Serial/SDK reader, same push-only API |
+| **Backend** | [x] In `backend-service/` (separate deploy) |
+| **Integration** | [x] Agent → backend (config-driven); tune retries, TLS, timeouts |
+| **Admin / ops** | [ ] Admin UI; snapshots; offline queue; monitoring |
 
 ---
 
@@ -382,25 +189,23 @@ See `backend-service/CONTEXT.MD` for full schema. `alerts` includes `employee_id
 
 | Layer | Technology |
 |-------|------------|
-| ANPR | Python, YOLOv8, EasyOCR, OpenCV (library done; FastAPI server TBD) |
-| RFID Service | Python, pyserial / vendor SDK |
-| API Agent | Python, FastAPI, websockets |
-| React Dashboard | React 19, Vite, Material UI v5, WebSocket |
-| Backend | Python, FastAPI (in `backend-service/`) |
-| Database | MongoDB (Beanie ODM) |
+| ANPR | Python, YOLOv8, EasyOCR, OpenCV (Ultralytics); FastAPI server (`anpr_service/server.py`) |
+| RFID Service | Python, FastAPI, httpx |
+| API Agent | Python, FastAPI, httpx, WebSocket |
+| Dashboard | React 19, Vite, Material UI (`@mui/material`), WebSocket |
+| Backend | Python, FastAPI, MongoDB, Beanie (see `backend-service/`) |
 
 ---
 
 ## 10. Key Design Decisions
 
-1. **RFID triggers ANPR automatically** — no scan button. RFID always polling; once it fires, ANPR triggers.
-2. **Snapshot, not stream** — ANPR captures a single frame when triggered. MJPEG stream is for preview only.
-3. **API Agent as event bus** — Dashboard receives all events via WebSocket.
-4. **Guard cannot override** — Open Barricade disabled until RFID + ANPR both validate.
-5. **3x ANPR retry + manual fallback** — If OCR fails 3x, guard enters plate manually.
-6. **Demo mode** — When API Agent is unreachable, "Simulate Verification" runs a mock flow for UI testing.
-7. **Employee login** — Dashboard is gated; guards sign in with Employee ID + password (session in localStorage). Header shows user and Logout.
-8. **Alert employee tracking** — Dashboard sends logged-in `employee_id` with Start Verification; backend stores it on alerts when verification fails (investigation/accountability).
+1. **RFID is unidirectional** — Edge never pulls business data from the API Agent; only HTTP POST `{ rfid_tag }` to ingest.
+2. **Backend is remote** — Barricade `.env` points `BACKEND_BASE_URL` at AWS (or localhost for dev).
+3. **API Agent orchestrates** — WebSocket to dashboard; HTTP to ANPR and backend.
+4. **ANPR** — `POST /capture` for verification; MJPEG `video_feed` for preview.
+5. **Mock vs live** — `simulate` avoids backend; real RFID trigger uses backend + ANPR pipeline.
+6. **Demo mode** — If WebSocket disconnects, dashboard can run local demo timers (`useWebSocket` + `enableDemoMode`).
+7. **Employee login** — Mock auth in `useAuth` (extend to backend later).
 
 ---
 
@@ -408,44 +213,52 @@ See `backend-service/CONTEXT.MD` for full schema. `alerts` includes `employee_id
 
 ```
 barricade-service/
-├── anpr_service/           ✅ ANPR Python library
+├── anpr_service/
 │   ├── anpr_service.py
+│   ├── server.py           # FastAPI: /health, /video_feed, /capture
 │   ├── utility.py
 │   ├── sort/
-│   └── examples/
-├── api_agent/              ✅ FastAPI + WebSocket orchestrator
-│   ├── core/               events.py, connection.py
-│   ├── routes/             root.py, health.py, rfid_scan.py, ws.py
-│   ├── services/           verification.py (mock flow)
+│   ├── pyproject.toml
+│   └── README.md
+├── api_agent/
+│   ├── core/               # events.py, connection.py
+│   ├── routes/             # root, health, rfid_scan, ws
+│   ├── services/         # verification.py, session.py
+│   ├── config.py
+│   ├── logging_config.py
 │   ├── app.py
 │   ├── main.py
 │   └── pyproject.toml
-├── rfid_service/           ✅ Mock RFID service (push-only)
-│   ├── app.py              `GET /ui`, `POST /trigger` → httpx POST to API Agent
-│   ├── push.py             `push_rfid_tag` → `{ rfid_tag }` only
-│   ├── service.py          In-memory tag cycle (mock hardware)
-│   ├── mock_data.py        Tag strings list
-│   ├── config.py           `API_AGENT_RFID_INGEST_URL`
-│   ├── main.py             uvicorn entry point (port 8002)
+├── rfid_service/
+│   ├── app.py
+│   ├── push.py
+│   ├── service.py
+│   ├── mock_data.py
+│   ├── config.py
+│   ├── logging_config.py
+│   ├── main.py
 │   └── pyproject.toml
-├── dashboard_service/      ✅ React dashboard
+├── dashboard_service/
 │   └── src/
-│       ├── components/     Header, CameraFeed, SessionLog, StatusBadge,
-│       │                   DriverCard, GateControl, ManualPlateEntryDialog, LoginPage
-│       ├── hooks/          useVerificationState, useWebSocket, useAuth
+│       ├── components/
+│       ├── hooks/          # useVerificationState, useWebSocket, useAuth
+│       ├── utils/logger.js
 │       ├── constants.js
-│       └── App.jsx
-├── main.py                 ✅ Entry point (processes static image)
-├── pyproject.toml
-├── yolov8n.pt
-└── CONTEXT.MD              (this file)
+│       ├── App.jsx / AppAgent.jsx
+│       └── ...
+├── run-barricade.sh        # api_agent, anpr_service, rfid_service, dashboard_service
+├── .env.example
+├── pyproject.toml          # uv workspace: api_agent, rfid_service, anpr_service
+├── main.py                 # Optional static-image ANPR demo (not part of 4-service run)
+└── CONTEXT.MD              # this file
 ```
 
 ---
 
 ## 12. Open Questions
 
-- RFID hardware: specific reader model and library
-- Snapshot storage: local filesystem vs S3
-- Admin panel auth: roles (admin / supervisor / viewer)
-- Offline mode: queue events when backend unreachable?
+- RFID reader model and SDK for production.
+- Snapshot storage (S3 vs local) and retention.
+- TLS for agent ↔ cloud backend; API keys / IAM.
+- Replacing mock `useAuth` with backend JWT.
+- `employee_id` passed through verify calls end-to-end (partially wired).

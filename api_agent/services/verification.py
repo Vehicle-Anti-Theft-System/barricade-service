@@ -15,7 +15,6 @@ from api_agent.config import (
     ANPR_MAX_RETRIES,
     ANPR_RETRY_DELAY,
     anpr_service_url,
-    backend_base_url,
     default_barricade_id,
 )
 from api_agent.core import get_manager
@@ -28,6 +27,7 @@ from api_agent.core.events import (
     EVENT_RFID_CHECK_RESULT,
     EVENT_RFID_SCANNING,
 )
+from api_agent.services.backend_client import BackendRequestError, backend_post_json
 from api_agent.services.session import get_session
 
 logger = logging.getLogger(__name__)
@@ -106,32 +106,34 @@ async def _capture_plate() -> dict:
         r = await client.post(url)
         r.raise_for_status()
         data = r.json()
-        logger.debug("ANPR /capture response: %s", data)
+        plate = data.get("plate")
+        conf = data.get("confidence")
+        logger.info(
+            "ANPR /capture OK plate=%s confidence=%s",
+            plate or "(none)",
+            f"{conf:.2f}" if isinstance(conf, (int, float)) else conf,
+        )
+        logger.debug("ANPR /capture raw: %s", data)
         return data
 
 
 async def _verify_anpr_with_backend(rfid_tag: str, plate: str, barricade_id: str) -> dict:
-    """Call backend POST /api/verify/anpr."""
-    url = f"{backend_base_url()}/api/verify/anpr"
+    """Call backend POST /api/verify/anpr (retries + API key via backend_client)."""
     payload = {
         "rfid_tag": rfid_tag,
         "plate_detected": plate,
         "barricade_id": barricade_id,
     }
-    logger.debug("HTTP POST %s (rfid_tag=%s plate=%s)", url, rfid_tag, plate)
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.post(url, json=payload)
-        r.raise_for_status()
-        data = r.json()
-        logger.debug("Backend /verify/anpr response status field: %s", data.get("status"))
-        return data
+    logger.debug("Backend POST /api/verify/anpr (rfid_tag=%s plate=%s)", rfid_tag, plate)
+    data = await backend_post_json("/api/verify/anpr", payload)
+    logger.debug("Backend /verify/anpr response status field: %s", data.get("status"))
+    return data
 
 
 async def _open_gate_backend(
     order_id: str, barricade_id: str, rfid_tag: str, plate: str, method: str = "auto"
 ) -> dict:
     """Call backend POST /api/verify/gate-open."""
-    url = f"{backend_base_url()}/api/verify/gate-open"
     payload = {
         "order_id": order_id,
         "barricade_id": barricade_id,
@@ -139,13 +141,23 @@ async def _open_gate_backend(
         "plate_detected": plate,
         "gate_method": method,
     }
-    logger.info("HTTP POST %s (order_id=%s method=%s)", url, order_id, method)
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.post(url, json=payload)
-        r.raise_for_status()
-        data = r.json()
+    logger.info("Backend POST /api/verify/gate-open (order_id=%s method=%s)", order_id, method)
+    data = await backend_post_json("/api/verify/gate-open", payload)
+    if data.get("status") != "ok":
+        detail = data.get("detail") or data.get("status") or "gate-open rejected"
+        raise BackendRequestError(
+            str(detail),
+            status_code=200,
+            body=data,
+        )
+    if data.get("duplicate"):
+        logger.info(
+            "Backend gate-open idempotent: entry_log_id=%s",
+            data.get("entry_log_id"),
+        )
+    else:
         logger.info("Backend gate-open ok: entry_log_id=%s", data.get("entry_log_id"))
-        return data
+    return data
 
 
 async def run_anpr_pipeline() -> None:
@@ -196,7 +208,7 @@ async def run_anpr_pipeline() -> None:
 
     try:
         anpr_result = await _verify_anpr_with_backend(session.rfid_tag, plate, barricade_id)
-    except Exception as exc:
+    except BackendRequestError as exc:
         logger.error("Backend ANPR verify failed: %s", exc)
         await manager.broadcast(
             msg(EVENT_ANPR_RESULT, status="FAILED", plate=plate, detail=f"Backend error: {exc}")
@@ -226,6 +238,8 @@ async def run_anpr_pipeline() -> None:
                 await _open_gate_backend(
                     session.order_id, barricade_id, session.rfid_tag, plate, "auto"
                 )
+            except BackendRequestError as exc:
+                logger.error("Backend gate-open failed: %s", exc)
             except Exception as exc:
                 logger.error("Backend gate-open failed: %s", exc)
 
@@ -256,7 +270,7 @@ async def verify_manual_plate(plate: str) -> None:
 
     try:
         anpr_result = await _verify_anpr_with_backend(session.rfid_tag, plate, barricade_id)
-    except Exception as exc:
+    except BackendRequestError as exc:
         logger.error("Backend ANPR verify (manual) failed: %s", exc)
         await manager.broadcast(
             msg(EVENT_ANPR_RESULT, status="FAILED", plate=plate, detail=f"Backend error: {exc}")
@@ -285,6 +299,8 @@ async def verify_manual_plate(plate: str) -> None:
                 await _open_gate_backend(
                     session.order_id, barricade_id, session.rfid_tag, plate, "manual"
                 )
+            except BackendRequestError as exc:
+                logger.error("Backend gate-open (manual) failed: %s", exc)
             except Exception as exc:
                 logger.error("Backend gate-open (manual) failed: %s", exc)
 
@@ -307,6 +323,8 @@ async def open_gate_live(method: str = "manual") -> None:
         plate = session.plate_detected or ""
         try:
             await _open_gate_backend(session.order_id, barricade_id, session.rfid_tag, plate, method)
+        except BackendRequestError as exc:
+            logger.error("Backend gate-open (manual btn) failed: %s", exc)
         except Exception as exc:
             logger.error("Backend gate-open (manual btn) failed: %s", exc)
     else:

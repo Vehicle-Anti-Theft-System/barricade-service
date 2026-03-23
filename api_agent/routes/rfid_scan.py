@@ -10,13 +10,13 @@ import asyncio
 import logging
 from uuid import UUID
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from api_agent.config import backend_base_url, default_barricade_id
+from api_agent.config import default_barricade_id
 from api_agent.core import get_manager
 from api_agent.core.events import EVENT_RFID_CHECK_RESULT, EVENT_RFID_SCANNING
+from api_agent.services.backend_client import BackendRequestError, backend_post_json
 from api_agent.services.session import get_session
 from api_agent.services.verification import event_message, run_anpr_pipeline
 
@@ -95,21 +95,16 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
     except ValueError:
         raise HTTPException(status_code=500, detail="DEFAULT_BARRICADE_ID must be a valid UUID")
 
-    url = f"{backend_base_url()}/api/verify/rfid"
     payload = {"rfid_tag": body.rfid_tag.strip(), "barricade_id": barricade_id}
-    logger.debug("POST %s for RFID verify", url)
+    logger.debug("POST /api/verify/rfid for RFID verify")
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.post(url, json=payload)
-            r.raise_for_status()
-            data = r.json()
-    except httpx.HTTPStatusError as e:
-        try:
-            err_body = e.response.json()
-            detail = err_body.get("detail", str(e))
-        except Exception:
-            detail = e.response.text or str(e)
+        data = await backend_post_json("/api/verify/rfid", payload)
+    except BackendRequestError as e:
+        detail = str(e)
+        if isinstance(e.body, dict) and e.body.get("detail"):
+            d = e.body["detail"]
+            detail = "; ".join(str(x) for x in d) if isinstance(d, list) else str(d)
         await manager.broadcast(
             event_message(
                 EVENT_RFID_CHECK_RESULT,
@@ -118,23 +113,17 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
                 detail=f"Backend error: {detail}",
             )
         )
-        logger.error("RFID ingest: backend HTTP error for tag=%s: %s", tag, detail)
-        return {"accepted": True, "note": "backend returned error; failure pushed to dashboard"}
-    except (httpx.RequestError, ValueError) as e:
-        await manager.broadcast(
-            event_message(
-                EVENT_RFID_CHECK_RESULT,
-                status="FAILED",
-                rfid=body.rfid_tag.strip(),
-                detail=f"Backend unreachable: {e!s}",
-            )
-        )
-        logger.error("RFID ingest: backend unreachable for tag=%s: %s", tag, e)
-        return {"accepted": True, "note": "backend unreachable; failure pushed to dashboard"}
+        logger.error("RFID ingest: backend error for tag=%s: %s", tag, detail)
+        return {"accepted": True, "note": "backend error; failure pushed to dashboard"}
 
     session.set_rfid_result(data)
     status = data.get("status", "?")
-    logger.info("RFID backend result tag=%s status=%s", tag, status)
+    logger.info(
+        "RFID backend result tag=%s status=%s order_id=%s",
+        tag,
+        status,
+        data.get("order_id"),
+    )
     ws_payload = _map_backend_to_ws_payload(data)
     await manager.broadcast(ws_payload)
 

@@ -34,12 +34,23 @@ git clone <repository-url>
 cd barricade-service
 ```
 
-2. Install dependencies using `uv` (recommended):
+2. **Automated (recommended)** — Python workspace + dashboard:
+
+```bash
+./bin.setup              # or ./bin/setup
+./bin.setup --skip-dashboard   # Python only (no npm)
+```
+
+This runs `uv sync` for `api_agent`, `rfid_service`, `anpr_service`, and root ML deps (first run can take several minutes), creates `.env` from `.env.example` if missing, and `npm install` in `dashboard_service/`.
+
+3. **Manual** — install dependencies using `uv` only:
+
 ```bash
 uv sync
 ```
 
 Or install using pip:
+
 ```bash
 pip install -e .
 ```
@@ -49,10 +60,10 @@ pip install -e .
 **Architecture:** The **backend** (FastAPI + MongoDB) is intended to run **remotely** (e.g. on AWS). This repo (`barricade-service`) is what runs **on the gate PC**: ANPR, API Agent, RFID mock, and the dashboard. The API Agent talks to your deployed backend via `BACKEND_BASE_URL` in `.env`.
 
 1. Deploy `backend-service` (or your API) and seed MongoDB there; note the **barricade id** and API base URL.
-2. Copy `.env.example` → `.env` and set:
+2. Run **`./bin.setup`** once (installs Python + dashboard deps; creates `.env` from `.env.example` if needed). Then edit **`.env`**:
    - `BACKEND_BASE_URL` — your AWS (or cloud) API base URL, **no trailing slash**
    - `DEFAULT_BARRICADE_ID` — UUID of the barricade for this gate
-3. From this directory, after `uv sync`:
+3. From this directory:
 
 ```bash
 ./run-barricade.sh

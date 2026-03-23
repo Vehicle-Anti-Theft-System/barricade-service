@@ -43,6 +43,7 @@ api_agent/
 │   └── ws.py         # WebSocket /ws
 ├── services/         # Business logic
 │   ├── __init__.py
+│   ├── backend_client.py  # Backend HTTP: retries, X-API-Key, timeouts
 │   ├── session.py    # Verification session (RFID context for manual / gate)
 │   └── verification.py  # Mock + live ANPR pipelines
 ├── config.py         # Env + log_effective_settings()
@@ -56,8 +57,11 @@ api_agent/
 | Env | Default | Purpose |
 |-----|---------|---------|
 | `LOG_LEVEL` | `INFO` | `DEBUG` shows HTTP/WS details, broadcast fan-out, ANPR/backend payloads |
+| `BACKEND_API_KEY` | — | Must match backend `API_KEY` when the server enforces auth |
+| `BACKEND_MAX_RETRIES` | `4` | Retries for 502/503/504 and connection errors |
+| `BACKEND_HTTP_TIMEOUT_SEC` | `25` | Per-request timeout to the cloud API |
 
-On startup the agent logs effective settings (`BACKEND_BASE_URL`, `ANPR_SERVICE_URL`, whether `DEFAULT_BARRICADE_ID` is set, retry counts). WebSocket commands, RFID ingest, and backend HTTP calls are logged at INFO; use `DEBUG` for full request/response traces.
+On startup the agent logs effective settings (`BACKEND_BASE_URL`, `BACKEND_API_KEY` set or not, `ANPR_SERVICE_URL`, `DEFAULT_BARRICADE_ID`, retry counts). WebSocket commands, RFID ingest, and backend HTTP calls are logged at INFO; use `DEBUG` for full request/response traces.
 
 ## WebSocket commands (dashboard → agent)
 

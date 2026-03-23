@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api_agent.config import log_effective_settings
+from api_agent.config import backend_api_key, log_effective_settings
 from api_agent.core import get_manager
 from api_agent.logging_config import configure_logging
 from api_agent.routes import router
@@ -21,6 +21,11 @@ async def lifespan(app: FastAPI):
     configure_logging()
     logger.info("API Agent starting (WebSocket + HTTP)")
     log_effective_settings()
+    if not backend_api_key():
+        logger.warning(
+            "BACKEND_API_KEY is unset — central backend requires X-API-Key on all /api/* calls; "
+            "set BACKEND_API_KEY to match backend API_KEY or verification will fail with 401."
+        )
     yield
     manager = get_manager()
     n = len(manager.connections)
