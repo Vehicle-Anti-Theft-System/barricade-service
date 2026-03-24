@@ -374,7 +374,9 @@ async def verify_manual_plate(plate: str) -> None:
                     logger.error("Backend gate-open (manual) failed: %s", exc)
 
             await asyncio.sleep(0.3)
-            await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="manual"))
+            # Dashboard log: "auto" = opened because Open Automatically is on (policy).
+            # Backend gate_method may still be "manual" for audit (manual plate entry path).
+            await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="auto"))
         else:
             logger.info(
                 "Manual plate VALIDATED but auto_open_after_verify=false; "

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
 import "./App.css";
 import {
   Header,
@@ -16,14 +15,6 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { useAuth } from "./hooks/useAuth";
 import { ANPR_STATES } from "./constants";
 
-const theme = createTheme({
-  palette: {
-    primary: { main: "#3b82f6" },
-    success: { main: "#22c55e" },
-    error: { main: "#ef4444" },
-  },
-});
-
 export default function AppAgent() {
   const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
   const [state, dispatch] = useVerificationState();
@@ -39,6 +30,7 @@ export default function AppAgent() {
 
   function handleStartVerification() {
     if (!wsConnected || !send) return;
+    dispatch({ type: "session_reset", payload: {} });
     send({
       event: "simulate",
       employee_id: user?.employeeId ?? null,
@@ -103,20 +95,18 @@ export default function AppAgent() {
 
   if (!isAuthenticated) {
     return (
-      <ThemeProvider theme={theme}>
-        <LoginPage
-          onLogin={login}
-          loading={authLoading}
-          error={authError}
-          onClearError={clearError}
-        />
-      </ThemeProvider>
+      <LoginPage
+        onLogin={login}
+        loading={authLoading}
+        error={authError}
+        onClearError={clearError}
+      />
     );
   }
 
   return (
-    <ThemeProvider theme={theme}>
-      <div className="screen">
+    <>
+    <div className="screen">
         <div className="main-container">
           <Header
             wsConnected={wsConnected}
@@ -182,6 +172,6 @@ export default function AppAgent() {
         onClose={() => setManualPlateOpen(false)}
         onSubmit={handleManualPlateSubmit}
       />
-    </ThemeProvider>
+    </>
   );
 }

@@ -10,14 +10,22 @@ import {
   IconButton,
   Alert,
   CircularProgress,
+  Tooltip,
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import BadgeIcon from "@mui/icons-material/Badge";
 import LockIcon from "@mui/icons-material/Lock";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import SecurityIcon from "@mui/icons-material/Security";
+import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
+import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
+import { useColorMode } from "../ColorModeContext";
 
 export function LoginPage({ onLogin, loading, error, onClearError }) {
+  const theme = useTheme();
+  const { toggleColorMode } = useColorMode();
+  const isDark = theme.palette.mode === "dark";
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -33,11 +41,31 @@ export function LoginPage({ onLogin, loading, error, onClearError }) {
 
   return (
     <Box className="login-screen">
+      <Tooltip title={isDark ? "Light mode" : "Dark mode"}>
+        <IconButton
+          onClick={toggleColorMode}
+          size="small"
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          sx={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            zIndex: 2,
+            color: "text.secondary",
+            bgcolor: "background.paper",
+            border: 1,
+            borderColor: "divider",
+            "&:hover": { bgcolor: "action.hover" },
+          }}
+        >
+          {isDark ? <LightModeOutlinedIcon fontSize="small" /> : <DarkModeOutlinedIcon fontSize="small" />}
+        </IconButton>
+      </Tooltip>
       <Card className="login-card" elevation={0}>
         <CardContent sx={{ p: 4 }}>
           <Box className="login-header">
             <Box className="login-icon-wrapper">
-              <SecurityIcon sx={{ fontSize: 32, color: "white" }} />
+              <SecurityIcon sx={{ fontSize: 32, color: "common.white" }} />
             </Box>
             <Typography variant="h5" className="login-title">
               Barricade Control
@@ -69,7 +97,7 @@ export function LoginPage({ onLogin, loading, error, onClearError }) {
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <BadgeIcon sx={{ color: "#64748b" }} />
+                    <BadgeIcon sx={{ color: "text.secondary" }} />
                   </InputAdornment>
                 ),
               }}
@@ -87,7 +115,7 @@ export function LoginPage({ onLogin, loading, error, onClearError }) {
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <LockIcon sx={{ color: "#64748b" }} />
+                    <LockIcon sx={{ color: "text.secondary" }} />
                   </InputAdornment>
                 ),
                 endAdornment: (
@@ -112,6 +140,7 @@ export function LoginPage({ onLogin, loading, error, onClearError }) {
               type="submit"
               fullWidth
               variant="contained"
+              color="primary"
               size="large"
               disabled={!isFormValid || loading}
               sx={{
@@ -120,9 +149,9 @@ export function LoginPage({ onLogin, loading, error, onClearError }) {
                 fontSize: "0.9rem",
                 textTransform: "none",
                 borderRadius: 2,
-                boxShadow: "0 4px 14px rgba(59, 130, 246, 0.4)",
+                boxShadow: (t) => `0 4px 14px ${alpha(t.palette.primary.main, 0.35)}`,
                 "&:hover": {
-                  boxShadow: "0 6px 20px rgba(59, 130, 246, 0.5)",
+                  boxShadow: (t) => `0 6px 20px ${alpha(t.palette.primary.main, 0.45)}`,
                 },
               }}
             >

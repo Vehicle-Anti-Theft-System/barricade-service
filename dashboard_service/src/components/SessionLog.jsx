@@ -64,7 +64,8 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
         </div>
         <div className="logs-actions">
           <Button
-            variant="contained"
+            variant="outlined"
+            color="primary"
             size="small"
             startIcon={<RefreshIcon />}
             onClick={onRescan}
@@ -74,8 +75,6 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
               fontWeight: 600,
               fontSize: "0.8125rem",
               borderRadius: "8px",
-              boxShadow: "none",
-              "&:hover": { boxShadow: "none" },
             }}
           >
             {isRescanning ? "Resetting…" : "Rescan"}

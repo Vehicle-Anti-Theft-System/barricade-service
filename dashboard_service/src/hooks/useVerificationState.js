@@ -17,6 +17,8 @@ const initialState = {
   },
   logs: [],
   gateOpen: false,
+  /** Last open path: auto (WS/effect), manual (button / open_gate), or null when closed. */
+  gateOpenMethod: null,
   gateAnim: false,
   alert: null,
   sessionPhase: "idle", // idle | running | complete | error
@@ -53,6 +55,8 @@ function verificationReducer(state, action) {
       };
 
     case "set_auto_open":
+      /** Do not change gateOpen here — toggling "Open automatically" must not reset the gate
+       *  (would re-enable Open barricade without a new verification / Rescan). */
       return {
         ...state,
         autoOpenEnabled: Boolean(action.payload?.enabled),
@@ -107,6 +111,9 @@ function verificationReducer(state, action) {
             value: action.payload.plate,
             confidence: action.payload.confidence,
           },
+          /** New verification cycle completed — gate must not stay open from a stale client session. */
+          gateOpen: false,
+          gateOpenMethod: null,
           sessionPhase: "complete",
           logs: pushLog(
             state.logs,
@@ -169,6 +176,8 @@ function verificationReducer(state, action) {
           value: action.payload.plate,
           confidence: 1,
         },
+        gateOpen: false,
+        gateOpenMethod: null,
         sessionPhase: "complete",
         logs: pushLog(
           state.logs,
@@ -187,6 +196,7 @@ function verificationReducer(state, action) {
       return {
         ...state,
         gateOpen: wantOpen,
+        gateOpenMethod: wantOpen ? method : null,
         gateAnim: true,
         logs: pushLog(
           state.logs,
@@ -216,6 +226,7 @@ function verificationReducer(state, action) {
       return {
         ...state,
         gateOpen: true,
+        gateOpenMethod: "manual",
         gateAnim: true,
       };
 

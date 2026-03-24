@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
 import "./App.css";
 import {
   Header,
@@ -15,14 +14,6 @@ import { useVerificationState } from "./hooks/useVerificationState";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useAuth } from "./hooks/useAuth";
 import { ANPR_STATES } from "./constants";
-
-const theme = createTheme({
-  palette: {
-    primary: { main: "#3b82f6" },
-    success: { main: "#22c55e" },
-    error: { main: "#ef4444" },
-  },
-});
 
 export default function App() {
   const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
@@ -40,6 +31,8 @@ export default function App() {
   });
 
   function handleStartVerification() {
+    /** Align with offline demo: reset UI session so stale gateOpen cannot block Open barricade. */
+    dispatch({ type: "session_reset", payload: {} });
     if (wsConnected && send) {
       send({
         event: "simulate",
@@ -127,20 +120,18 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <ThemeProvider theme={theme}>
-        <LoginPage
-          onLogin={login}
-          loading={authLoading}
-          error={authError}
-          onClearError={clearError}
-        />
-      </ThemeProvider>
+      <LoginPage
+        onLogin={login}
+        loading={authLoading}
+        error={authError}
+        onClearError={clearError}
+      />
     );
   }
 
   return (
-    <ThemeProvider theme={theme}>
-      <div className="screen">
+    <>
+    <div className="screen">
         <div className="main-container">
           <Header
             wsConnected={wsConnected}
@@ -205,6 +196,6 @@ export default function App() {
         onClose={() => setManualPlateOpen(false)}
         onSubmit={handleManualPlateSubmit}
       />
-    </ThemeProvider>
+    </>
   );
 }

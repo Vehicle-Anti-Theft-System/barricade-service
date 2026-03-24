@@ -17,7 +17,7 @@ export function GateControl({
     anpr?.status === ANPR_STATES.VALIDATED;
 
   const isOpen = gateOpen;
-  /** One manual open per session; rescan clears `gateOpen` so the button can be used again. */
+  /** Manual open when both factors passed and gate not yet opened this session (auto toggle does not affect this). */
   const canManualOpen = allVerified && !gateOpen;
 
   return (
@@ -54,11 +54,15 @@ export function GateControl({
               size="small"
             />
           }
-          label="Open Automatically"
+          label="Open gate automatically after verification"
           sx={{
+            margin: 0,
+            alignItems: "flex-start",
             "& .MuiFormControlLabel-label": {
-              fontSize: "0.78rem",
-              color: "#94a3b8",
+              fontSize: "0.8rem",
+              fontWeight: 500,
+              color: "text.secondary",
+              lineHeight: 1.35,
             },
           }}
         />
@@ -73,21 +77,24 @@ export function GateControl({
         startIcon={isOpen ? <LockOpenIcon /> : <LockIcon />}
         className={`btn-primary ${gateAnim ? "gate-pop" : ""} ${!canManualOpen ? "btn-disabled" : ""}`}
         sx={{
-          textTransform: "uppercase",
+          textTransform: "none",
           fontWeight: 700,
-          fontSize: "0.82rem",
+          fontSize: "0.875rem",
+          letterSpacing: "0.02em",
           py: 1.5,
-          backgroundColor: isOpen ? "#22c55e" : "#3b82f6",
+          backgroundColor: (theme) =>
+            isOpen ? theme.palette.success.main : theme.palette.primary.main,
           "&:hover": {
-            backgroundColor: isOpen ? "#16a34a" : "#2563eb",
+            backgroundColor: (theme) =>
+              isOpen ? theme.palette.success.dark : theme.palette.primary.dark,
           },
           "&.Mui-disabled": {
-            backgroundColor: "#475569",
-            color: "rgba(255,255,255,0.7)",
+            backgroundColor: (theme) => theme.palette.action.disabledBackground,
+            color: (theme) => theme.palette.action.disabled,
           },
         }}
       >
-        {isOpen ? "✅ Gate Open" : "⛔ Open Barricade"}
+        {isOpen ? "Gate open" : "Open barricade"}
       </Button>
     </div>
   );
