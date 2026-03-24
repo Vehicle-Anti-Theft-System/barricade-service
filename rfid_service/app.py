@@ -35,11 +35,19 @@ _UI_HTML = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RFID Mock — Simulate scan</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 1rem; }
+    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 2rem auto; padding: 0 1rem; }
     h1 { font-size: 1.25rem; }
     button { padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; }
     pre { background: #f4f4f4; padding: 1rem; overflow: auto; border-radius: 6px; font-size: 0.85rem; }
     .hint { color: #555; font-size: 0.9rem; margin-top: 1rem; }
+    .ref { margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid #ddd; }
+    .ref h2 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+    .ref p { font-size: 0.9rem; color: #444; margin: 0 0 0.75rem; }
+    table.ref-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    table.ref-table th, table.ref-table td { border: 1px solid #ccc; padding: 0.45rem 0.6rem; text-align: left; }
+    table.ref-table th { background: #f0f0f0; font-weight: 600; }
+    table.ref-table tbody tr:nth-child(even) { background: #fafafa; }
+    table.ref-table code { font-size: 0.88em; }
   </style>
 </head>
 <body>
@@ -48,6 +56,20 @@ _UI_HTML = """<!DOCTYPE html>
   <form method="post" action="/trigger">
     <button type="submit">Simulate RFID scan</button>
   </form>
+  <section class="ref" aria-labelledby="seed-ref-heading">
+    <h2 id="seed-ref-heading">Backend seed reference (<code>backend-service/seed.py</code>)</h2>
+    <p>Seeded trucks: RFID tag paired with license plate. After a successful RFID step, ANPR / manual entry should match this plate for that tag.</p>
+    <table class="ref-table">
+      <thead>
+        <tr><th>RFID tag</th><th>License plate</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>TRK-0042</code></td><td><code>MH04AB1234</code></td></tr>
+        <tr><td><code>TRK-0078</code></td><td><code>JH01CD5678</code></td></tr>
+        <tr><td><code>TRK-0101</code></td><td><code>MH12EF9012</code></td></tr>
+      </tbody>
+    </table>
+  </section>
   <p class="hint">Flow is one-way: RFID service → API Agent (<code>POST /rfid/scan</code>). Results appear on the dashboard via WebSocket.</p>
   <p class="hint">API: <code>POST /trigger</code> — JSON shows transport result only.</p>
   <p class="hint">Open <a href="/docs">/docs</a> for Swagger.</p>

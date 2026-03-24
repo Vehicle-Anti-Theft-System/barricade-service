@@ -1,9 +1,53 @@
-import { useRef, useEffect } from "react";
-import { Button } from "@mui/material";
+import { useRef, useEffect, useMemo } from "react";
+import { Button, Chip } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
+
+function sessionStatusLabel(phase) {
+  switch (phase) {
+    case "running":
+      return "In progress";
+    case "complete":
+      return "Complete";
+    case "error":
+      return "Failed";
+    default:
+      return "Awaiting start";
+  }
+}
+
+/** Legacy entries used `{ status: 'success' | 'error' }` only. */
+function normalizeLogEntry(log) {
+  if (log.variant && log.label != null) {
+    return { time: log.time, event: log.event, variant: log.variant, label: log.label };
+  }
+  const isErr = log.status === "error";
+  return {
+    time: log.time,
+    event: log.event,
+    variant: isErr ? "error" : "success",
+    label: isErr ? "Failed" : "Completed",
+  };
+}
+
+function statusChipColor(variant) {
+  switch (variant) {
+    case "success":
+      return "success";
+    case "error":
+      return "error";
+    case "warning":
+      return "warning";
+    case "info":
+      return "info";
+    default:
+      return "default";
+  }
+}
 
 export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
   const logsRef = useRef(null);
+
+  const rows = useMemo(() => logs.map(normalizeLogEntry), [logs]);
 
   useEffect(() => {
     if (logsRef.current) {
@@ -14,7 +58,10 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
   return (
     <div className="card white-card logs-card">
       <div className="logs-header">
-        <h3>Timestamp — Log</h3>
+        <div className="logs-title-block">
+          <h3>Activity</h3>
+          <p className="logs-phase">{sessionStatusLabel(sessionPhase)}</p>
+        </div>
         <div className="logs-actions">
           <Button
             variant="contained"
@@ -23,9 +70,12 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
             onClick={onRescan}
             disabled={isRescanning}
             sx={{
-              textTransform: "uppercase",
-              fontWeight: 700,
-              fontSize: "0.72rem",
+              textTransform: "none",
+              fontWeight: 600,
+              fontSize: "0.8125rem",
+              borderRadius: "8px",
+              boxShadow: "none",
+              "&:hover": { boxShadow: "none" },
             }}
           >
             {isRescanning ? "Resetting…" : "Rescan"}
@@ -36,29 +86,46 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
         <table className="logs-table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Event Description</th>
-              <th>Status</th>
+              <th className="logs-col-time">Time</th>
+              <th>Event</th>
+              <th className="logs-col-outcome">Outcome</th>
             </tr>
           </thead>
           <tbody>
-            {logs.length === 0 && (
+            {rows.length === 0 && (
               <tr>
                 <td colSpan="3" className="logs-empty">
-                  Awaiting verification scan…
+                  No events yet. Start verification to see a live audit trail.
                 </td>
               </tr>
             )}
-            {logs.map((log, i) => (
-              <tr key={i} className={`log-row log-${log.status}`}>
-                <td>{log.time}</td>
-                <td>{log.event}</td>
-                <td>
-                  <span
-                    className={`status-tag ${log.status === "error" ? "status-error" : ""}`}
-                  >
-                    {log.status === "error" ? "✕ Failed" : "✓ Validated"}
-                  </span>
+            {rows.map((log, i) => (
+              <tr
+                key={`${log.time}-${i}`}
+                className={`log-row log-row--${log.variant}`}
+              >
+                <td className="log-time">{log.time}</td>
+                <td className="log-event">{log.event}</td>
+                <td className="log-outcome-cell">
+                  <Chip
+                    label={log.label}
+                    size="small"
+                    variant="outlined"
+                    color={statusChipColor(log.variant)}
+                    sx={{
+                      height: 24,
+                      maxWidth: "100%",
+                      fontWeight: 600,
+                      fontSize: "0.6875rem",
+                      letterSpacing: "0.01em",
+                      borderRadius: "6px",
+                      "& .MuiChip-label": {
+                        px: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      },
+                    }}
+                  />
                 </td>
               </tr>
             ))}

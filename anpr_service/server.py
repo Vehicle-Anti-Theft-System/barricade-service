@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from anpr_service.anpr_service import ANPRConfig, ANPRService
+from anpr_service.logging_config import configure_logging as configure_anpr_logging
 
 logger = logging.getLogger(__name__)
 
@@ -169,13 +170,7 @@ async def capture():
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        force=True,
-    )
-    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    configure_anpr_logging()
     logger.info("Starting ANPR HTTP server on 0.0.0.0:8001")
     uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
 

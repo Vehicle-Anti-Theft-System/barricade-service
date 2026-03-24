@@ -87,7 +87,11 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
                 detail="API Agent: set DEFAULT_BARRICADE_ID env for backend verification",
             )
         )
-        logger.warning("RFID ingest: DEFAULT_BARRICADE_ID not set; failing open for dashboard")
+        logger.warning(
+            "RFID ingest: DEFAULT_BARRICADE_ID is unset — backend verify skipped; "
+            "dashboard got FAILED (RFID POST still returns 200 so the reader does not retry-loop). "
+            "Set DEFAULT_BARRICADE_ID in .env to the gate UUID from backend seed.py."
+        )
         return {"accepted": True, "note": "barricade_id not configured; emitted failure to dashboard"}
 
     try:

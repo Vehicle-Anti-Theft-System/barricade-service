@@ -27,7 +27,6 @@ const theme = createTheme({
 export default function AppAgent() {
   const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
   const [state, dispatch] = useVerificationState();
-  const [autoOpen, setAutoOpen] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
   const [manualPlateOpen, setManualPlateOpen] = useState(false);
   const [rescanning, setRescanning] = useState(false);
@@ -43,15 +42,9 @@ export default function AppAgent() {
     send({
       event: "simulate",
       employee_id: user?.employeeId ?? null,
-      auto_open: autoOpen,
+      auto_open: state.autoOpenEnabled,
     });
   }
-
-  useEffect(() => {
-    if (state.sessionPhase === "complete" && autoOpen && !state.gateOpen) {
-      dispatch({ type: "gate_decision", payload: { open: true, method: "auto" } });
-    }
-  }, [state.sessionPhase, autoOpen, state.gateOpen, dispatch]);
 
   useEffect(() => {
     if (state.gateAnim) {
@@ -76,10 +69,19 @@ export default function AppAgent() {
   }
 
   function handleManualPlateSubmit(plate) {
-    if (wsConnected && send) {
-      send({ event: "manual_plate", plate });
-    } else {
-      dispatch({ type: "anpr_manual_submit", payload: { plate } });
+    if (send) {
+      const ok = send({ event: "manual_plate", plate });
+      if (!ok) {
+        dispatch({
+          type: "anpr_result",
+          payload: {
+            status: "FAILED",
+            plate,
+            detail:
+              "Manual plate was not sent. Check API agent is running and status shows ONLINE.",
+          },
+        });
+      }
     }
     setManualPlateOpen(false);
   }
@@ -89,6 +91,13 @@ export default function AppAgent() {
       send({ event: "open_gate" });
     } else {
       dispatch({ type: "gate_open_click" });
+    }
+  }
+
+  function handleAutoOpenChange(checked) {
+    dispatch({ type: "set_auto_open", payload: { enabled: checked } });
+    if (wsConnected && send) {
+      send({ event: "set_auto_open", auto_open: checked });
     }
   }
 
@@ -157,8 +166,8 @@ export default function AppAgent() {
               <GateControl
                 rfid={state.rfid}
                 anpr={state.anpr}
-                autoOpen={autoOpen}
-                onAutoOpenChange={setAutoOpen}
+                autoOpen={state.autoOpenEnabled}
+                onAutoOpenChange={handleAutoOpenChange}
                 gateOpen={state.gateOpen}
                 gateAnim={state.gateAnim}
                 onOpenGate={handleOpenGate}

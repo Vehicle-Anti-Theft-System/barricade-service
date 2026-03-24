@@ -27,7 +27,6 @@ const theme = createTheme({
 export default function App() {
   const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
   const [state, dispatch] = useVerificationState();
-  const [autoOpen, setAutoOpen] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
   const [manualPlateOpen, setManualPlateOpen] = useState(false);
   const [rescanning, setRescanning] = useState(false);
@@ -46,7 +45,7 @@ export default function App() {
         event: "simulate",
         scenario: simulateCase,
         employee_id: user?.employeeId ?? null,
-        auto_open: autoOpen,
+        auto_open: state.autoOpenEnabled,
       });
     } else {
       simulateDemoFlow?.(simulateCase);
@@ -55,16 +54,18 @@ export default function App() {
 
   wsRef.current = { simulateDemoFlow: handleStartVerification };
 
-  // Auto-open gate when verification complete and autoOpen is on
+  // Offline demo only: no API agent → nothing sends gate_decision. When online, the
+  // server is the only source for automatic opens (respects simulate `auto_open`).
   useEffect(() => {
+    if (wsConnected) return;
     if (
       state.sessionPhase === "complete" &&
-      autoOpen &&
+      state.autoOpenEnabled &&
       !state.gateOpen
     ) {
       dispatch({ type: "gate_decision", payload: { open: true, method: "auto" } });
     }
-  }, [state.sessionPhase, autoOpen, state.gateOpen, dispatch]);
+  }, [wsConnected, state.sessionPhase, state.autoOpenEnabled, state.gateOpen, dispatch]);
 
   // Reset gate animation after a delay
   useEffect(() => {
@@ -92,7 +93,17 @@ export default function App() {
 
   function handleManualPlateSubmit(plate) {
     if (wsConnected && send) {
-      send({ event: "manual_plate", plate });
+      const ok = send({ event: "manual_plate", plate });
+      if (!ok) {
+        dispatch({
+          type: "anpr_result",
+          payload: {
+            status: "FAILED",
+            plate,
+            detail: "Could not send to API agent (socket not ready).",
+          },
+        });
+      }
     } else {
       dispatch({ type: "anpr_manual_submit", payload: { plate } });
     }
@@ -104,6 +115,13 @@ export default function App() {
       send({ event: "open_gate" });
     } else {
       dispatch({ type: "gate_open_click" });
+    }
+  }
+
+  function handleAutoOpenChange(checked) {
+    dispatch({ type: "set_auto_open", payload: { enabled: checked } });
+    if (wsConnected && send) {
+      send({ event: "set_auto_open", auto_open: checked });
     }
   }
 
@@ -171,8 +189,8 @@ export default function App() {
               <GateControl
                 rfid={state.rfid}
                 anpr={state.anpr}
-                autoOpen={autoOpen}
-                onAutoOpenChange={setAutoOpen}
+                autoOpen={state.autoOpenEnabled}
+                onAutoOpenChange={handleAutoOpenChange}
                 gateOpen={state.gateOpen}
                 gateAnim={state.gateAnim}
                 onOpenGate={handleOpenGate}

@@ -3,7 +3,7 @@ import json
 import logging
 from typing import List
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
@@ -15,18 +15,18 @@ class ConnectionManager:
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
         self.connections.append(ws)
-        logger.info("WebSocket connected (active clients: %d)", len(self.connections))
+        logger.debug("WebSocket connected (active clients: %d)", len(self.connections))
 
     def disconnect(self, ws: WebSocket) -> None:
         if ws in self.connections:
             self.connections.remove(ws)
-            logger.info("WebSocket disconnected (active clients: %d)", len(self.connections))
+            logger.debug("WebSocket disconnected (active clients: %d)", len(self.connections))
 
     async def send_to(self, ws: WebSocket, payload: dict) -> None:
-        try:
-            await ws.send_text(json.dumps(payload))
-        except Exception as exc:
-            logger.warning("WebSocket send_to failed: %s", exc)
+        # Do not swallow WebSocketDisconnect: Starlette may mark the socket DISCONNECTED
+        # before raising; swallowing it leaves a dead socket and the next receive_text()
+        # raises RuntimeError('Need to call "accept" first.').
+        await ws.send_text(json.dumps(payload))
 
     async def broadcast(self, payload: dict) -> None:
         event = payload.get("event", "?")
@@ -39,7 +39,13 @@ class ConnectionManager:
         else:
             logger.debug("Broadcast event=%s to %d client(s)", event, n)
         for connection in list(self.connections):
-            await self.send_to(connection, payload)
+            try:
+                await self.send_to(connection, payload)
+            except WebSocketDisconnect:
+                self.disconnect(connection)
+            except Exception as exc:
+                logger.warning("WebSocket broadcast: dropping client after send error: %s", exc)
+                self.disconnect(connection)
 
 
 _manager: ConnectionManager | None = None

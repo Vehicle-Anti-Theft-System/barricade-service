@@ -1,6 +1,6 @@
 # Mine Site Anti-Theft Vehicle Detection System — Barricade Edge
 
-## Implementation Status (last updated: 2026-03)
+## Implementation Status (last updated: 2026-03-24)
 
 > Use this file to restore full project context in any future conversation.  
 > **Scope:** `barricade-service/` only (local edge). Central backend lives in `backend-service/` (typically deployed on AWS).  
@@ -32,9 +32,9 @@
 | **2-factor verification** | ✅ | **RFID + ANPR only** (no fingerprint; see `backend-service` for schema). |
 | **ANPR library** | ✅ | `anpr_service/anpr_service.py` — YOLOv8 + EasyOCR + SORT: `process_image`, `process_video`, `process_camera`, `capture_and_process_frame`. |
 | **ANPR HTTP server** | ✅ | `anpr_service/server.py` — FastAPI: `GET /health`, `GET /video_feed` (MJPEG for dashboard), `POST /capture` (single-frame plate read). Entry: `uv run anpr-service` or workspace script. |
-| **API Agent** | ✅ | `api_agent/` — FastAPI + WebSocket `/ws`. Routes: `GET /`, `GET /health`, `POST /rfid/scan`, `WebSocket /ws`. **Live flow:** RFID ingest → backend `POST /api/verify/rfid` → on success, background **ANPR pipeline** (`POST` local ANPR `/capture` → backend `POST /api/verify/anpr` → optional `POST /api/verify/gate-open`) → WebSocket events. **Mock flow:** `simulate` / `start_verification` for demos. **Session:** `services/session.py` holds RFID context for `manual_plate` / `open_gate`. **Config:** `api_agent/config.py` (`BACKEND_BASE_URL`, `ANPR_SERVICE_URL`, `DEFAULT_BARRICADE_ID`, retries). |
+| **API Agent** | ✅ | `api_agent/` — FastAPI + WebSocket `/ws`. Routes: `GET /`, `GET /health`, `POST /rfid/scan`, `WebSocket /ws`. **Live flow:** RFID ingest → backend `POST /api/verify/rfid` → background **ANPR pipeline** (`POST` ANPR `/capture`, retries, `anpr_manual`) → backend `POST /api/verify/anpr` → **only if** session `auto_open_after_verify` is true: `POST /api/verify/gate-open` + `gate_decision` (auto). **Manual plate** path: same flag — submitting the plate dialog does **not** open the gate when the flag is false; user uses **Open Barricade** (`open_gate`). **Mock flow:** `simulate` / `start_verification` with optional `auto_open`. **Session:** `services/session.py` — RFID context + `auto_open_after_verify` (not cleared on verification `reset()`). See `api_agent/CONTEXT.MD`. |
 | **RFID Service** | ✅ Mock | `rfid_service/` — **Unidirectional:** only **sends** `{ "rfid_tag" }` to API Agent `POST /rfid/scan`. `POST /trigger` cycles mock tags + `httpx` POST; `GET /ui` for testing. **No** pull/peek/list APIs. `config.py`: `API_AGENT_RFID_INGEST_URL`. |
-| **React Dashboard** | ✅ | `dashboard_service/` — Vite + React + **Material UI** (`@mui/material`). Login (`useAuth`), verification UI, `useVerificationState` (RFID + ANPR), `useWebSocket`, `constants.js` (`WEBSOCKET_URL`, `MJPEG_STREAM_URL` via `VITE_*`). |
+| **React Dashboard** | ✅ | `dashboard_service/` — Vite + React + **Material UI v5** (`@mui/material`). `App.jsx` (demo: simulation cases + offline demo timers) vs `AppAgent.jsx` (agent build: no simulation dropdown). `useVerificationState`: RFID + ANPR + **`autoOpenEnabled`** (toggle), activity log (**max 50** rows, FIFO), `gate_decision` ignores automatic opens when toggle off (reducer). `useWebSocket`, `constants.js` (`WEBSOCKET_URL`, `MJPEG_STREAM_URL` via `VITE_*`). **Gate:** **Open Barricade** disabled after gate opened until **Rescan** (`session_reset`). |
 | **Camera feed** | ✅ | `CameraFeed.jsx` → `http://<VITE_ANPR_HOST>/video_feed` with placeholder on error. |
 | **WebSocket protocol** | ✅ | Events/commands in `api_agent/core/events.py`; dashboard reducer aligns with `rfid_scanning`, `rfid_check_result`, `anpr_processing`, `anpr_result`, `anpr_retry`, `anpr_manual`, `gate_decision`, `session_reset`. |
 | **Run script** | ✅ | `run-barricade.sh` — starts **api_agent → anpr_service → rfid_service → dashboard_service** (order tuned for dependencies). Optional `SKIP_ANPR=1`, `SKIP_DASHBOARD=1`. Loads `.env`. |
@@ -85,9 +85,9 @@ At mine sites in India, cargo theft (coal, fuel, etc.) occurs through **truck-dr
 ### Live path (hardware / mock trigger)
 
 1. **RFID** — `rfid_service` sends a tag to **API Agent** `POST /rfid/scan` (one-way). Agent broadcasts `rfid_scanning`, calls backend **`POST /api/verify/rfid`**, broadcasts `rfid_check_result`.
-2. **If RFID VALIDATED** — Agent starts **ANPR pipeline** (async): `anpr_processing` → **`POST ANPR /capture`** (retries + `anpr_retry` / `anpr_manual` if needed) → backend **`POST /api/verify/anpr`** → broadcasts `anpr_result`; on success may call **`POST /api/verify/gate-open`** and `gate_decision`.
-3. **Dashboard** — Subscribes via WebSocket; **manual plate** and **open gate** commands go to the agent when connected.
-4. **Simulate** — `simulate` / `start_verification` runs **mock** delays only (no backend), for UI demos.
+2. **If RFID VALIDATED** — Agent starts **ANPR pipeline** (async): `anpr_processing` → **`POST ANPR /capture`** (retries + `anpr_retry` / `anpr_manual` if needed) → backend **`POST /api/verify/anpr`** → broadcasts `anpr_result`; on success, **only if “Open Automatically” is enabled** (session `auto_open_after_verify`): **`POST /api/verify/gate-open`** and `gate_decision` with `method: "auto"`.
+3. **Dashboard** — Subscribes via WebSocket; **`set_auto_open`**, **manual plate**, and **open gate** go to the agent when connected. Toggle **Open Automatically** updates reducer `autoOpenEnabled` and syncs **`set_auto_open`** so the agent session matches the UI.
+4. **Simulate** — `simulate` / `start_verification` runs a **timed mock** RFID → ANPR → optional gate (optional `auto_open`). When `BACKEND_BASE_URL` + `DEFAULT_BARRICADE_ID` + API key are set, the mock RFID step can call **`POST /api/verify/rfid`** for a fixed tag (e.g. `TRK-0042`) so session matches the DB.
 
 ### Verification flow (state machine)
 
@@ -130,6 +130,12 @@ CENTRAL BACKEND (backend-service/ — AWS / cloud)
 
 Implemented in `dashboard_service/src/constants.js` and `useVerificationState.js`.
 
+### Verification reducer highlights
+
+- **`autoOpenEnabled`** — mirrors **Open Automatically**; persisted across `session_reset` (like the activity log). **`gate_decision`** with `open: true` and `method` other than **`manual`** is **ignored** when this is false (WebSocket cannot force the UI gate open).
+- **Activity** — up to **50** log rows (FIFO); each row has an **outcome** label (e.g. RFID verified, Plate verified, OCR retry), not just pass/fail.
+- **`session_reset`** — clears verification state but keeps **logs** (trimmed) and **`autoOpenEnabled`**.
+
 ### RFID states
 
 `WAITING` | `SCANNING` | `IN_PROGRESS` | `VALIDATED` | `FAILED`
@@ -154,10 +160,11 @@ Event names are in `api_agent/core/events.py`. Typical payloads:
 
 ### WebSocket — inbound (Dashboard → API Agent)
 
-- `simulate` / `start_verification` — mock flow; optional `auto_open`, `employee_id`
+- `simulate` / `start_verification` — mock flow; optional **`auto_open`** (default true), optional `employee_id` (demo `App.jsx` may send extra fields for **offline** `simulateDemoFlow`; the agent uses `auto_open` and ignores unknown keys)
+- **`set_auto_open`** — `{ "auto_open": true | false }` — updates agent session `auto_open_after_verify` (must match dashboard **Open Automatically** toggle)
 - `session_reset`
-- `manual_plate` — `{ "plate": "..." }`
-- `open_gate`
+- `manual_plate` — `{ "plate": "..." }` — backend ANPR verify; gate open only if `auto_open_after_verify` (see above)
+- `open_gate` — explicit **Open Barricade**; always performs backend gate-open + `gate_decision` (`method: "manual"`) when session is valid
 
 ---
 
@@ -203,8 +210,8 @@ Backend (`backend-service/`) creates alerts on verification failures. Types incl
 2. **Backend is remote** — Barricade `.env` points `BACKEND_BASE_URL` at AWS (or localhost for dev).
 3. **API Agent orchestrates** — WebSocket to dashboard; HTTP to ANPR and backend.
 4. **ANPR** — `POST /capture` for verification; MJPEG `video_feed` for preview.
-5. **Mock vs live** — `simulate` avoids backend; real RFID trigger uses backend + ANPR pipeline.
-6. **Demo mode** — If WebSocket disconnects, dashboard can run local demo timers (`useWebSocket` + `enableDemoMode`).
+5. **Mock vs live** — `simulate` is a timed mock; real RFID uses backend + ANPR pipeline. **`App.jsx`** can fall back to local demo timers when offline (`useWebSocket` + `enableDemoMode`); **`AppAgent`** requires the API agent (no demo simulation of the full flow).
+6. **Open Automatically** — Enforced in the **reducer** and on the **API agent** (`auto_open_after_verify`). Submitting manual plate or completing OCR does **not** open the gate when off; the guard uses **Open Barricade** (`open_gate`).
 7. **Employee login** — Mock auth in `useAuth` (extend to backend later).
 
 ---
@@ -240,11 +247,12 @@ barricade-service/
 │   └── pyproject.toml
 ├── dashboard_service/
 │   └── src/
-│       ├── components/
+│       ├── components/     # GateControl, SessionLog, CameraFeed, …
 │       ├── hooks/          # useVerificationState, useWebSocket, useAuth
 │       ├── utils/logger.js
 │       ├── constants.js
-│       ├── App.jsx / AppAgent.jsx
+│       ├── App.jsx         # demo + simulation case dropdown + offline demo
+│       ├── AppAgent.jsx    # production-style agent UI (no simulation dropdown)
 │       └── ...
 ├── run-barricade.sh        # api_agent, anpr_service, rfid_service, dashboard_service
 ├── .env.example

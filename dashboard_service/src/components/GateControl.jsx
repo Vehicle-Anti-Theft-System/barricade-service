@@ -17,7 +17,8 @@ export function GateControl({
     anpr?.status === ANPR_STATES.VALIDATED;
 
   const isOpen = gateOpen;
-  const canOpen = allVerified;
+  /** One manual open per session; rescan clears `gateOpen` so the button can be used again. */
+  const canManualOpen = allVerified && !gateOpen;
 
   return (
     <div className="card gate-card">
@@ -37,6 +38,7 @@ export function GateControl({
             ANPR_STATES.TRIGGERED,
             ANPR_STATES.PROCESSING,
             ANPR_STATES.RETRY,
+            ANPR_STATES.MANUAL_ENTRY,
             ANPR_STATES.IN_PROGRESS,
           ].includes(anpr?.status)}
         />
@@ -66,10 +68,10 @@ export function GateControl({
         fullWidth
         variant="contained"
         size="large"
-        onClick={() => canOpen && onOpenGate()}
-        disabled={!canOpen}
+        onClick={() => canManualOpen && onOpenGate()}
+        disabled={!canManualOpen}
         startIcon={isOpen ? <LockOpenIcon /> : <LockIcon />}
-        className={`btn-primary ${gateAnim ? "gate-pop" : ""} ${!canOpen ? "btn-disabled" : ""}`}
+        className={`btn-primary ${gateAnim ? "gate-pop" : ""} ${!canManualOpen ? "btn-disabled" : ""}`}
         sx={{
           textTransform: "uppercase",
           fontWeight: 700,

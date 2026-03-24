@@ -1,4 +1,4 @@
-"""Logging setup for RFID service."""
+"""Colored logging for ANPR HTTP server (pink lines)."""
 import logging
 import os
 import sys
@@ -16,12 +16,10 @@ def configure_logging() -> None:
     level = getattr(logging, level_name, logging.INFO)
 
     setup_colored_root_logging(
-        "rfid",
+        "anpr",
         level=level,
         fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)

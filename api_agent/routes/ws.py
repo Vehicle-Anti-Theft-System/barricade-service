@@ -9,6 +9,7 @@ from api_agent.core.events import (
     CMD_MANUAL_PLATE,
     CMD_OPEN_GATE,
     CMD_SESSION_RESET,
+    CMD_SET_AUTO_OPEN,
     CMD_SIMULATE,
     CMD_START_VERIFICATION,
     EVENT_SESSION_RESET,
@@ -24,6 +25,18 @@ from api_agent.services.verification import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _parse_auto_open(data: dict) -> bool:
+    """Default True when omitted; accept JSON booleans only (strict)."""
+    if "auto_open" not in data:
+        return True
+    v = data["auto_open"]
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "true", "yes", "on")
+    return bool(v)
 
 
 @router.websocket("/ws")
@@ -49,7 +62,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             logger.info("WebSocket inbound: %s", event)
 
             if event in (CMD_SIMULATE, CMD_START_VERIFICATION):
-                auto_open = data.get("auto_open", True)
+                auto_open = _parse_auto_open(data)
+                get_session().auto_open_after_verify = auto_open
                 employee_id = data.get("employee_id") or None
                 logger.info(
                     "simulate/start_verification: auto_open=%s employee_id=%s",
@@ -57,6 +71,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     "set" if employee_id else "none",
                 )
                 await run_mock_verification(ws, auto_open=auto_open, employee_id=employee_id)
+
+            elif event == CMD_SET_AUTO_OPEN:
+                enabled = _parse_auto_open(data)
+                get_session().auto_open_after_verify = enabled
+                logger.info("set_auto_open: %s", enabled)
 
             elif event == CMD_SESSION_RESET:
                 logger.info("session_reset: clearing verification session")
@@ -76,6 +95,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 await open_gate_live(method="manual")
 
     except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected")
+        logger.debug("WebSocket client disconnected")
     finally:
         manager.disconnect(ws)

@@ -20,10 +20,16 @@ const initialState = {
   gateAnim: false,
   alert: null,
   sessionPhase: "idle", // idle | running | complete | error
+  /** User toggle: block automatic gate_decision (WebSocket "auto"); manual opens always apply. */
+  autoOpenEnabled: true,
 };
 
-function pushLog(logs, time, event, status) {
-  return [...logs, { time, event, status }];
+const MAX_LOGS = 50;
+
+/** @param {{ variant: 'success' | 'error' | 'warning' | 'info'; label: string }} meta */
+function pushLog(logs, time, event, meta) {
+  const next = [...logs, { time, event, variant: meta.variant, label: meta.label }];
+  return next.length <= MAX_LOGS ? next : next.slice(-MAX_LOGS);
 }
 
 function nowTime() {
@@ -41,7 +47,15 @@ function verificationReducer(state, action) {
     case "session_reset":
       return {
         ...initialState,
-        logs: state.logs,
+        logs:
+          state.logs.length > MAX_LOGS ? state.logs.slice(-MAX_LOGS) : state.logs,
+        autoOpenEnabled: state.autoOpenEnabled,
+      };
+
+    case "set_auto_open":
+      return {
+        ...state,
+        autoOpenEnabled: Boolean(action.payload?.enabled),
       };
 
     case "rfid_check_result":
@@ -60,12 +74,11 @@ function verificationReducer(state, action) {
             ...state.anpr,
             status: ANPR_STATES.TRIGGERED,
           },
-          logs: pushLog(
-            state.logs,
-            t,
-            `RFID Scanned — Truck ${action.payload.truck_id}`,
-            "success"
-          ),
+          sessionPhase: "running",
+          logs: pushLog(state.logs, t, `RFID Scanned — Truck ${action.payload.truck_id}`, {
+            variant: "success",
+            label: "RFID verified",
+          }),
         };
       }
       return {
@@ -79,12 +92,10 @@ function verificationReducer(state, action) {
         },
         sessionPhase: "error",
         alert: action.payload.detail ?? "RFID not found or no active order",
-        logs: pushLog(
-          state.logs,
-          t,
-          `RFID FAILED — ${action.payload.detail ?? "Not found"}`,
-          "error"
-        ),
+        logs: pushLog(state.logs, t, `RFID FAILED — ${action.payload.detail ?? "Not found"}`, {
+          variant: "error",
+          label: "RFID rejected",
+        }),
       };
 
     case "anpr_result":
@@ -101,7 +112,7 @@ function verificationReducer(state, action) {
             state.logs,
             t,
             `ANPR — Plate ${action.payload.plate} (${Math.round((action.payload.confidence ?? 0) * 100)}%) — verification complete`,
-            "success"
+            { variant: "success", label: "Plate verified" }
           ),
         };
       }
@@ -113,12 +124,10 @@ function verificationReducer(state, action) {
         },
         sessionPhase: "error",
         alert: action.payload.detail ?? "Plate mismatch",
-        logs: pushLog(
-          state.logs,
-          t,
-          `ANPR FAILED — ${action.payload.detail ?? "Plate mismatch"}`,
-          "error"
-        ),
+        logs: pushLog(state.logs, t, `ANPR FAILED — ${action.payload.detail ?? "Plate mismatch"}`, {
+          variant: "error",
+          label: "Plate rejected",
+        }),
       };
 
     case "anpr_retry":
@@ -129,11 +138,12 @@ function verificationReducer(state, action) {
           status: ANPR_STATES.RETRY,
           attempt: action.payload.attempt ?? state.anpr.attempt + 1,
         },
+        sessionPhase: "running",
         logs: pushLog(
           state.logs,
           t,
           `ANPR Retry — attempt ${action.payload.attempt ?? state.anpr.attempt + 1}`,
-          "success"
+          { variant: "warning", label: "OCR retry" }
         ),
       };
 
@@ -144,12 +154,11 @@ function verificationReducer(state, action) {
           ...state.anpr,
           status: ANPR_STATES.MANUAL_ENTRY,
         },
-        logs: pushLog(
-          state.logs,
-          t,
-          `ANPR — Manual entry required (3x OCR failure)`,
-          "success"
-        ),
+        sessionPhase: "running",
+        logs: pushLog(state.logs, t, `ANPR — Manual entry required (3x OCR failure)`, {
+          variant: "warning",
+          label: "Review required",
+        }),
       };
 
     case "anpr_manual_submit":
@@ -165,22 +174,31 @@ function verificationReducer(state, action) {
           state.logs,
           t,
           `Manual plate entry — ${action.payload.plate} — verification complete`,
-          "success"
+          { variant: "success", label: "Plate verified" }
         ),
       };
 
-    case "gate_decision":
+    case "gate_decision": {
+      const wantOpen = action.payload.open ?? true;
+      const method = action.payload.method ?? "auto";
+      if (wantOpen && method !== "manual" && !state.autoOpenEnabled) {
+        return state;
+      }
       return {
         ...state,
-        gateOpen: action.payload.open ?? true,
+        gateOpen: wantOpen,
         gateAnim: true,
         logs: pushLog(
           state.logs,
           t,
-          `Gate ${action.payload.open ? "Opened" : "Stay locked"} — ${action.payload.method ?? "manual"}`,
-          "success"
+          `Gate ${wantOpen ? "Opened" : "Stay locked"} — ${method}`,
+          {
+            variant: wantOpen ? "success" : "info",
+            label: wantOpen ? "Gate opened" : "Gate held",
+          }
         ),
       };
+    }
 
     case "alert_raised":
       return {
@@ -190,7 +208,7 @@ function verificationReducer(state, action) {
           state.logs,
           t,
           `Alert — ${action.payload.type}: ${action.payload.detail ?? ""}`,
-          "error"
+          { variant: "error", label: "Alert" }
         ),
       };
 
@@ -208,18 +226,21 @@ function verificationReducer(state, action) {
       return {
         ...state,
         rfid: { ...state.rfid, status: RFID_STATES.SCANNING },
+        sessionPhase: "running",
       };
 
     case "rfid_in_progress":
       return {
         ...state,
         rfid: { ...state.rfid, status: RFID_STATES.IN_PROGRESS },
+        sessionPhase: "running",
       };
 
     case "anpr_processing":
       return {
         ...state,
         anpr: { ...state.anpr, status: ANPR_STATES.PROCESSING },
+        sessionPhase: "running",
       };
 
     default:

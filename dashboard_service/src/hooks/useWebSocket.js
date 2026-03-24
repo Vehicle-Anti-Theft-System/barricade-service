@@ -13,6 +13,13 @@ export function useWebSocket(dispatch, options = {}) {
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
 
+  // Callbacks must not be effect deps: parent often passes inline arrows → new identity
+  // every render → effect cleanup closes WS on every state update → send() hits non-OPEN socket.
+  const onConnectRef = useRef(onConnect);
+  const onDisconnectRef = useRef(onDisconnect);
+  onConnectRef.current = onConnect;
+  onDisconnectRef.current = onDisconnect;
+
   const simulateDemoFlow = useCallback((scenario = "success") => {
     if (!enableDemoMode || !dispatchRef.current) return;
     demoModeRef.current = true;
@@ -136,7 +143,7 @@ export function useWebSocket(dispatch, options = {}) {
           if (mounted) {
             demoModeRef.current = false;
             logger.info("WebSocket connected");
-            onConnect?.();
+            onConnectRef.current?.();
           }
         };
 
@@ -154,7 +161,7 @@ export function useWebSocket(dispatch, options = {}) {
 
         ws.onclose = () => {
           logger.info("WebSocket closed");
-          if (mounted) onDisconnect?.();
+          if (mounted) onDisconnectRef.current?.();
         };
 
         ws.onerror = () => {
@@ -164,7 +171,7 @@ export function useWebSocket(dispatch, options = {}) {
       } catch (err) {
         logger.error("WebSocket connect failed:", err);
         if (mounted && enableDemoMode) {
-          onDisconnect?.();
+          onDisconnectRef.current?.();
         }
       }
     };
@@ -178,7 +185,7 @@ export function useWebSocket(dispatch, options = {}) {
         wsRef.current = null;
       }
     };
-  }, [enableDemoMode, onConnect, onDisconnect]);
+  }, [enableDemoMode]);
 
   return {
     isDemoMode: demoModeRef.current,
@@ -190,9 +197,10 @@ export function useWebSocket(dispatch, options = {}) {
           typeof data === "object" && data !== null ? data.event || data.command || "message" : "raw";
         logger.debug("WS send:", label);
         wsRef.current.send(payload);
-      } else {
-        logger.warn("WS send skipped: socket not open");
+        return true;
       }
+      logger.warn("WS send skipped: socket not open");
+      return false;
     },
   };
 }

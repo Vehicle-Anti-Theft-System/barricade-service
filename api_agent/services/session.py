@@ -22,6 +22,8 @@ class VerificationSession:
     plate_detected: str | None = None
     anpr_validated: bool = False
     rfid_validated: bool = False
+    # Dashboard "Open Automatically" + simulate auto_open; not cleared on verification reset
+    auto_open_after_verify: bool = True
 
     def reset(self) -> None:
         logger.debug("Session reset (clearing verification context)")
@@ -35,7 +37,8 @@ class VerificationSession:
         self.rfid_validated = False
 
     def set_rfid_result(self, data: dict) -> None:
-        self.rfid_tag = data.get("rfid_tag")
+        # Backend JSON uses rfid_tag; WebSocket rfid_check_result uses rfid
+        self.rfid_tag = data.get("rfid_tag") or data.get("rfid")
         self.expected_plate = data.get("expected_plate")
         self.order_id = str(data["order_id"]) if data.get("order_id") else None
         self.truck_id = str(data["truck_id"]) if data.get("truck_id") else None

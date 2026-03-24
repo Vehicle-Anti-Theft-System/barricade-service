@@ -15,6 +15,7 @@ from api_agent.config import (
     ANPR_MAX_RETRIES,
     ANPR_RETRY_DELAY,
     anpr_service_url,
+    backend_api_key,
     default_barricade_id,
 )
 from api_agent.core import get_manager
@@ -42,50 +43,94 @@ def event_message(event: str, **kwargs: Any) -> dict:
 # Mock verification (simulate button / demo)
 # ---------------------------------------------------------------------------
 
-async def run_mock_verification(
-    ws: WebSocket, *, auto_open: bool = True, employee_id: str | None = None
-) -> None:
-    """Run a single mock verification flow: RFID → ANPR → gate."""
-    _ = employee_id
-    logger.info("Mock verification started (auto_open=%s)", auto_open)
+async def _mock_rfid_hydrate_and_broadcast(ws: WebSocket) -> bool:
+    """RFID scanning + optional backend hydrate + rfid_check_result. Returns hydrated."""
     manager = get_manager()
+    session = get_session()
     msg = event_message
-    delays = {
-        "rfid_scan": 0.3,
-        "rfid_result": 1.2,
-        "anpr_process": 0.5,
-        "anpr_result": 1.0,
-        "gate": 0.3,
-    }
+    delays = {"rfid_scan": 0.3, "rfid_result": 1.2}
 
     await manager.send_to(ws, msg(EVENT_RFID_SCANNING))
     await asyncio.sleep(delays["rfid_scan"])
 
-    await manager.send_to(
-        ws,
-        msg(
-            EVENT_RFID_CHECK_RESULT,
-            status="VALIDATED",
-            rfid="8829-4471-001",
-            truck_id="TRK-047",
-            order_id="ORD-2024-891",
-            driver_name="Amit Kumar",
-        ),
-    )
+    mock_rfid_for_backend = "TRK-0042"
+    hydrated = False
+    bid = default_barricade_id()
+    if bid and backend_api_key():
+        try:
+            data = await backend_post_json(
+                "/api/verify/rfid",
+                {"rfid_tag": mock_rfid_for_backend, "barricade_id": bid},
+            )
+            session.set_rfid_result(data)
+            hydrated = data.get("status") == "VALIDATED"
+            if not hydrated:
+                logger.warning("Mock verification: backend RFID not VALIDATED (%s)", data.get("detail"))
+        except BackendRequestError as exc:
+            logger.warning("Mock verification: backend RFID unavailable (%s)", exc)
+
+    if hydrated:
+        await manager.send_to(
+            ws,
+            msg(
+                EVENT_RFID_CHECK_RESULT,
+                status="VALIDATED",
+                rfid=session.rfid_tag,
+                truck_id=session.truck_id,
+                order_id=session.order_id,
+                driver_name=session.driver_name,
+                expected_plate=session.expected_plate,
+            ),
+        )
+    else:
+        await manager.send_to(
+            ws,
+            msg(
+                EVENT_RFID_CHECK_RESULT,
+                status="VALIDATED",
+                rfid="8829-4471-001",
+                truck_id="TRK-047",
+                order_id="ORD-2024-891",
+                driver_name="Amit Kumar",
+            ),
+        )
     await asyncio.sleep(delays["rfid_result"])
+    return hydrated
+
+
+async def run_mock_verification(
+    ws: WebSocket, *, auto_open: bool = True, employee_id: str | None = None
+) -> None:
+    """Run a single mock verification flow: RFID → ANPR → gate (Start Verification only).
+
+    When backend URL, API key, and DEFAULT_BARRICADE_ID are set, the RFID step
+    calls POST /api/verify/rfid for TRK-0042 so server session matches the DB.
+    """
+    _ = employee_id
+    logger.info("Mock verification started (auto_open=%s)", auto_open)
+    manager = get_manager()
+    session = get_session()
+    session.reset()
+    msg = event_message
+    delays = {"anpr_process": 0.5, "anpr_result": 1.0, "gate": 0.3}
+
+    hydrated = await _mock_rfid_hydrate_and_broadcast(ws)
 
     await manager.send_to(ws, msg(EVENT_ANPR_PROCESSING))
     await asyncio.sleep(delays["anpr_process"])
 
+    mock_plate = (session.expected_plate if hydrated else None) or "MH12AB4821"
     await manager.send_to(
         ws,
         msg(
             EVENT_ANPR_RESULT,
             status="VALIDATED",
-            plate="MH12AB4821",
+            plate=mock_plate,
             confidence=0.98,
         ),
     )
+    session.plate_detected = mock_plate
+    session.anpr_validated = True
     await asyncio.sleep(delays["anpr_result"])
 
     if auto_open:
@@ -233,7 +278,7 @@ async def run_anpr_pipeline() -> None:
         session.plate_detected = plate
         session.anpr_validated = True
 
-        if session.order_id:
+        if session.auto_open_after_verify and session.order_id:
             try:
                 await _open_gate_backend(
                     session.order_id, barricade_id, session.rfid_tag, plate, "auto"
@@ -244,7 +289,8 @@ async def run_anpr_pipeline() -> None:
                 logger.error("Backend gate-open failed: %s", exc)
 
         await asyncio.sleep(0.3)
-        await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="auto"))
+        if session.auto_open_after_verify:
+            await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="auto"))
         logger.info("ANPR pipeline complete (VALIDATED plate=%s)", plate)
     else:
         logger.info("ANPR pipeline complete (FAILED status=%s)", status)
@@ -258,13 +304,33 @@ async def verify_manual_plate(plate: str) -> None:
     msg = event_message
     barricade_id = default_barricade_id()
 
-    if not session.rfid_tag or not barricade_id:
+    if not barricade_id:
+        logger.warning("Manual plate: DEFAULT_BARRICADE_ID unset — cannot call backend")
+        await manager.broadcast(
+            msg(
+                EVENT_ANPR_RESULT,
+                status="FAILED",
+                plate=plate,
+                detail="API Agent: set DEFAULT_BARRICADE_ID in .env for backend ANPR verify",
+            )
+        )
+        return
+
+    if not session.rfid_tag:
         logger.warning(
-            "Manual plate: skipping backend (no session rfid or DEFAULT_BARRICADE_ID); "
-            "broadcasting VALIDATED to UI only"
+            "Manual plate: no RFID context on server (session.rfid_tag unset). "
+            "Use RFID ingest or Start Verification with backend configured."
         )
         await manager.broadcast(
-            msg(EVENT_ANPR_RESULT, status="VALIDATED", plate=plate, confidence=1.0)
+            msg(
+                EVENT_ANPR_RESULT,
+                status="FAILED",
+                plate=plate,
+                detail=(
+                    "No RFID session on API Agent. Scan a tag (RFID service), or use "
+                    "Start Verification while backend + DEFAULT_BARRICADE_ID are configured."
+                ),
+            )
         )
         return
 
@@ -294,18 +360,27 @@ async def verify_manual_plate(plate: str) -> None:
         session.plate_detected = plate
         session.anpr_validated = True
 
-        if session.order_id:
-            try:
-                await _open_gate_backend(
-                    session.order_id, barricade_id, session.rfid_tag, plate, "manual"
-                )
-            except BackendRequestError as exc:
-                logger.error("Backend gate-open (manual) failed: %s", exc)
-            except Exception as exc:
-                logger.error("Backend gate-open (manual) failed: %s", exc)
+        # Same as OCR path: only open gate automatically when "Open Automatically" is on.
+        # Submitting the manual plate dialog is not the same as clicking Open Barricade.
+        if session.auto_open_after_verify:
+            if session.order_id:
+                try:
+                    await _open_gate_backend(
+                        session.order_id, barricade_id, session.rfid_tag, plate, "manual"
+                    )
+                except BackendRequestError as exc:
+                    logger.error("Backend gate-open (manual) failed: %s", exc)
+                except Exception as exc:
+                    logger.error("Backend gate-open (manual) failed: %s", exc)
 
-        await asyncio.sleep(0.3)
-        await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="manual"))
+            await asyncio.sleep(0.3)
+            await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="manual"))
+        else:
+            logger.info(
+                "Manual plate VALIDATED but auto_open_after_verify=false; "
+                "skipping gate-open (user can use Open Barricade)"
+            )
+
         logger.info("Manual plate flow complete (VALIDATED)")
     else:
         logger.info("Manual plate flow complete (FAILED status=%s)", status)
