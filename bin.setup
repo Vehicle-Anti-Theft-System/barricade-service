@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Wrapper: ./bin.setup from repo root → bin/setup
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bin/setup" "$@"

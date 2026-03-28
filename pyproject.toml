@@ -1,0 +1,31 @@
+[project]
+name = "barricade-service"
+version = "0.1.0"
+description = "Automatic Number Plate Recognition (ANPR) service for detecting vehicles, tracking them, and extracting license plate information"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "api-agent",
+    "rfid-service",
+    "anpr-service",
+    "easyocr>=1.7.2",
+    "filterpy>=1.4.5",
+    "numpy>=2.4.2",
+    "opencv-python>=4.13.0.92",
+    "pandas>=3.0.0",
+    "scikit-image>=0.26.0",
+    "scipy>=1.11.0",
+    "ultralytics>=8.4.14",
+]
+
+[tool.uv.workspace]
+members = [
+    "api_agent",
+    "rfid_service",
+    "anpr_service",
+]
+
+[tool.uv.sources]
+api-agent = { workspace = true }
+rfid-service = { workspace = true }
+anpr-service = { workspace = true }

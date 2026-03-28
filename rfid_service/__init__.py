@@ -1,0 +1,1 @@
+"""RFID mock service package."""
