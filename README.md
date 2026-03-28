@@ -1,193 +1,144 @@
-# Barricade Service
+# Barricade Service — Mine Site Gate (Edge)
 
-A comprehensive security and access control service system built with Python. Barricade Service provides automated vehicle and license plate recognition capabilities for security applications.
+Local **edge stack** for the mine-site anti-theft system: **RFID + ANPR** verification at the gate, orchestrated by an **API Agent** and a **React dashboard**. The **central API and MongoDB** live in [`backend-service`](../backend-service/); this repo is what runs **on the gate PC**.
 
-## Overview
+For full architecture and behavior, see [`CONTEXT.MD`](CONTEXT.MD).
 
-Barricade Service is a modular system designed for security and access control applications. It integrates multiple services to provide automated vehicle detection, tracking, and license plate recognition.
+---
 
-## Components
+## Prerequisites
 
-### ANPR Service
+- **Python** 3.12+ (see `.python-version` if present)
+- **[uv](https://docs.astral.sh/uv/)** — `curl -LsSf https://astral.sh/uv/install.sh | sh` or `brew install uv`
+- **Node.js + npm** — for the dashboard (skip with install flag below if you only need Python services)
+- **CUDA-capable GPU** (optional) — faster ANPR; CPU works too
 
-The Automatic Number Plate Recognition (ANPR) service is the core component of Barricade Service. It provides:
+---
 
-- Vehicle detection and tracking
-- License plate detection and recognition
-- Image and video processing
-- Live camera feed processing
+## Install (one-time)
 
-For detailed documentation, see [anpr_service/README.md](anpr_service/README.md).
+Run from the **`barricade-service/`** directory (repository root for this service).
 
-## Installation
-
-### Requirements
-
-- Python >= 3.12
-- CUDA-capable GPU (optional, for faster processing)
-
-### Setup
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd barricade-service
-```
-
-2. **Automated (recommended)** — Python workspace + dashboard:
+**Recommended — dedicated install script:**
 
 ```bash
-./bin.setup              # or ./bin/setup
-./bin.setup --skip-dashboard   # Python only (no npm)
+./bin/setup
 ```
 
-This runs `uv sync` for `api_agent`, `rfid_service`, `anpr_service`, and root ML deps (first run can take several minutes), creates `.env` from `.env.example` if missing, and `npm install` in `dashboard_service/`.
+This runs `uv sync` for the workspace (`api_agent`, `rfid_service`, `anpr_service`, and ANPR/ML dependencies), copies `.env.example` → `.env` if `.env` is missing, and runs `npm install` in `dashboard_service/`. The first `uv sync` can take several minutes (PyTorch / EasyOCR / YOLO).
 
-3. **Manual** — install dependencies using `uv` only:
+**Equivalent wrapper** (same script):
+
+```bash
+./bin.setup
+```
+
+**Options:**
+
+```bash
+./bin/setup --skip-dashboard   # Python only; no npm in dashboard_service/
+./bin/setup --help             # Full usage
+```
+
+**Manual install** (if you prefer not to use the script):
 
 ```bash
 uv sync
+cd dashboard_service && npm install && cd ..
+cp .env.example .env   # if you do not already have .env
 ```
 
-Or install using pip:
+---
 
-```bash
-pip install -e .
-```
+## Configure
 
-## Run the local barricade stack (one script)
+Edit **`.env`** after install (especially before a live integration):
 
-**Architecture:** The **backend** (FastAPI + MongoDB) is intended to run **remotely** (e.g. on AWS). This repo (`barricade-service`) is what runs **on the gate PC**: ANPR, API Agent, RFID mock, and the dashboard. The API Agent talks to your deployed backend via `BACKEND_BASE_URL` in `.env`.
+| Variable | Purpose |
+|----------|---------|
+| `BACKEND_BASE_URL` | Central API base URL (**no trailing slash**), e.g. `https://api.example.com` or `http://localhost:8000` for local backend |
+| `DEFAULT_BARRICADE_ID` | UUID of this gate in the remote DB (matches seeded barricade in backend dev) |
+| `BACKEND_API_KEY` | Must match the backend **`API_KEY`** (sent as `X-API-Key`) |
 
-1. Deploy `backend-service` (or your API) and seed MongoDB there; note the **barricade id** and API base URL.
-2. Run **`./bin.setup`** once (installs Python + dashboard deps; creates `.env` from `.env.example` if needed). Then edit **`.env`**:
-   - `BACKEND_BASE_URL` — your AWS (or cloud) API base URL, **no trailing slash**
-   - `DEFAULT_BARRICADE_ID` — UUID of the barricade for this gate
-3. From this directory:
+See `.env.example` for optional URLs (ANPR host, API agent host for the dashboard, log level, etc.).
+
+---
+
+## Run the edge stack
+
+**Recommended — dedicated run script:**
 
 ```bash
 ./run-barricade.sh
 ```
 
-This starts exactly four processes: **`api_agent`** (8080), **`anpr_service`** (8001), **`rfid_service`** (8002), **`dashboard_service`** (5173). Press **Ctrl+C** to stop all.
+Starts four processes:
 
-Optional:
+| Service | Port | Notes |
+|---------|------|--------|
+| **api_agent** | 8080 | HTTP + WebSocket `ws://localhost:8080/ws` |
+| **anpr_service** | 8001 | `GET /health`, `GET /video_feed`, `POST /capture` |
+| **rfid_service** | 8002 | Mock RFID; `GET /ui`, `POST /trigger` |
+| **dashboard_service** | 5173 | Vite dev server |
 
-```bash
-SKIP_ANPR=1 ./run-barricade.sh       # skip ANPR (no camera / ML)
-SKIP_DASHBOARD=1 ./run-barricade.sh  # skip Vite dashboard only
-```
+Press **Ctrl+C** to stop all child processes.
 
-The backend is not part of this script; deploy it separately (e.g. AWS) and set `BACKEND_BASE_URL`. For local backend dev, run `backend-service` yourself and use `BACKEND_BASE_URL=http://localhost:8000`.
-
-## Quick Start
-
-### Using the ANPR Service
-
-```python
-from anpr_service import ANPRService, ANPRConfig
-
-# Initialize service
-service = ANPRService()
-
-# Process an image
-processed_frame, results = service.process_image('image.jpg')
-
-# Print results
-for result in results:
-    if result.license_plate_text:
-        print(result.license_plate_text)
-```
-
-### Running the Main Application
+**Optional environment variables:**
 
 ```bash
-python main.py
+SKIP_ANPR=1 ./run-barricade.sh       # Skip ANPR (no camera / ML)
+SKIP_DASHBOARD=1 ./run-barricade.sh  # Skip the Vite dashboard only
 ```
 
-This will process `img4.jpg` and display the detection results.
+If `node_modules` is missing, `run-barricade.sh` runs `npm install` in `dashboard_service/` before starting the dashboard.
 
-## Project Structure
+**Central backend:** this script does **not** start `backend-service`. Deploy the backend separately (e.g. AWS) or run it locally from `backend-service/` with `./run-backend.sh`, then set `BACKEND_BASE_URL=http://localhost:8000` here.
+
+---
+
+## Overview of components
+
+- **ANPR Service** — YOLOv8 + EasyOCR + SORT; plate read and MJPEG preview. Details: [anpr_service/README.md](anpr_service/README.md).
+- **API Agent** — FastAPI + WebSocket; RFID ingest, calls to backend verify endpoints, ANPR pipeline. Details: [api_agent/README.md](api_agent/README.md).
+- **RFID Service** — Mock reader; pushes `{ "rfid_tag" }` to the API Agent. Details: [rfid_service/README.md](rfid_service/README.md).
+- **Dashboard** — Vite + React + Material UI v5. Details: [dashboard_service/README.md](dashboard_service/README.md).
+
+---
+
+## Optional: standalone ANPR demo
+
+Root **`main.py`** can process a static image (demo only; not part of the four-service runtime):
+
+```bash
+uv run python main.py
+```
+
+---
+
+## Project structure
 
 ```
 barricade-service/
-├── anpr_service/           # ANPR service module
-│   ├── README.md           # ANPR service documentation
-│   ├── __init__.py
-│   ├── anpr_service.py     # Main ANPR service class
-│   ├── utility.py          # Utility functions
-│   ├── sort/               # SORT tracking implementation
-│   └── examples/           # Usage examples
-├── main.py                 # Main application entry point
-├── pyproject.toml          # Project configuration
-└── README.md               # This file
+├── bin/setup           # Install: uv sync + .env bootstrap + npm (dashboard)
+├── bin.setup           # Wrapper → bin/setup
+├── run-barricade.sh    # Run: api_agent, anpr_service, rfid_service, dashboard
+├── api_agent/
+├── anpr_service/
+├── rfid_service/
+├── dashboard_service/
+├── pyproject.toml      # uv workspace
+├── .env.example
+├── CONTEXT.MD
+└── README.md
 ```
+
+---
 
 ## Dependencies
 
-See `pyproject.toml` for the complete list of dependencies. Key dependencies include:
+See `pyproject.toml`. Notable stack: **Ultralytics YOLOv8**, **EasyOCR**, **OpenCV**, **FastAPI**, **httpx**; dashboard uses **React** and **@mui/material** v5.
 
-- **ultralytics**: YOLO model inference
-- **easyocr**: Optical Character Recognition
-- **opencv-python**: Image and video processing
-- **filterpy**: Kalman filtering for tracking
-- **numpy**: Numerical operations
-- **scipy**: Scientific computing
-
-## Usage
-
-### Basic Image Processing
-
-```python
-from anpr_service import ANPRService
-
-service = ANPRService()
-processed_frame, results = service.process_image('image.jpg')
-```
-
-### Video Processing
-
-```python
-from anpr_service import ANPRService
-
-service = ANPRService()
-all_results = service.process_video('video.mp4', output_path='output.mp4')
-```
-
-### Camera Feed
-
-```python
-from anpr_service import ANPRService
-
-service = ANPRService()
-service.process_camera(camera_index=0)  # Press 'q' to quit
-```
-
-For more detailed usage examples and API documentation, see [anpr_service/README.md](anpr_service/README.md).
-
-## Development
-
-### Running Tests
-
-```bash
-python main.py
-```
-
-### Project Architecture
-
-Barricade Service follows a modular architecture:
-
-- **Service Modules**: Independent, reusable service components
-- **Main Application**: Entry point that orchestrates services
-- **Configuration**: Centralized configuration management
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-[Add your license here]
+---
 
 ## Acknowledgments
 
