@@ -32,11 +32,6 @@ ENV/
 *.swo
 *~
 
-# Model files (large binary files)
-*.pt
-yolov8n.pt
-license_plate_detector.pt
-
 # Keep uv.lock (it should be committed)
 # uv.lock
 
