@@ -1,0 +1,15 @@
+{
+  "camera": {
+    "type": "usb",
+    "usb_index": 0,
+    "network_url": "",
+    "resolution_width": 1280,
+    "resolution_height": 720
+  },
+  "rfid": {
+    "mode": "mock",
+    "com_port": "",
+    "baud_rate": 9600,
+    "api_agent_ingest_url": "http://localhost:8080/rfid/scan"
+  }
+}

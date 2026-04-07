@@ -22,7 +22,7 @@ import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import { useColorMode } from "../ColorModeContext";
 
-export function LoginPage({ onLogin, loading, error, onClearError }) {
+export function LoginPage({ onLogin, loading, error, onClearError, emailMode = false }) {
   const theme = useTheme();
   const { toggleColorMode } = useColorMode();
   const isDark = theme.palette.mode === "dark";
@@ -88,10 +88,13 @@ export function LoginPage({ onLogin, loading, error, onClearError }) {
           <form onSubmit={handleSubmit}>
             <TextField
               fullWidth
-              label="Employee ID"
-              placeholder="Enter your employee ID"
+              label={emailMode ? "Email" : "Employee ID"}
+              placeholder={emailMode ? "you@example.com" : "Enter your employee ID"}
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
+              type="text"
+              inputMode={emailMode ? "email" : "text"}
+              autoComplete="username"
               disabled={loading}
               sx={{ mb: 2.5 }}
               InputProps={{

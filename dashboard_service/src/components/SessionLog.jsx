@@ -94,7 +94,7 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
             {rows.length === 0 && (
               <tr>
                 <td colSpan="3" className="logs-empty">
-                  No events yet. Start verification to see a live audit trail.
+                  No events yet. Scan an RFID tag to begin verification.
                 </td>
               </tr>
             )}

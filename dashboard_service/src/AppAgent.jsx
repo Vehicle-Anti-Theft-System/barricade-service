@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 import "./App.css";
 import {
   Header,
@@ -10,33 +11,34 @@ import {
   ManualPlateEntryDialog,
   LoginPage,
 } from "./components";
+import { AdminLayout } from "./admin/AdminLayout";
+import { OrdersPage } from "./admin/OrdersPage";
+import { TrucksPage } from "./admin/TrucksPage";
+import { DriversPage } from "./admin/DriversPage";
+import { ConfigurationPage } from "./admin/ConfigurationPage";
+import { AlertsPage } from "./admin/AlertsPage";
 import { useVerificationState } from "./hooks/useVerificationState";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useBackendHealthState } from "./hooks/useBackendHealth";
+import { ANPR_STATES, BACKEND_URL } from "./constants";
 import { useAuth } from "./hooks/useAuth";
-import { ANPR_STATES } from "./constants";
 
-export default function AppAgent() {
-  const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
+function GateDashboard({ auth }) {
+  const { user, usesBackendAuth, accessToken, login, logout, clearError, loading, error, isAuthenticated } =
+    auth;
   const [state, dispatch] = useVerificationState();
   const [wsConnected, setWsConnected] = useState(false);
   const [manualPlateOpen, setManualPlateOpen] = useState(false);
   const [rescanning, setRescanning] = useState(false);
+  const { backendConnected, setBackendConnected } = useBackendHealthState();
 
   const { send } = useWebSocket(dispatch, {
     onConnect: () => setWsConnected(true),
     onDisconnect: () => setWsConnected(false),
-    enableDemoMode: false,
+    onBackendHealth: BACKEND_URL ? setBackendConnected : undefined,
   });
 
-  function handleStartVerification() {
-    if (!wsConnected || !send) return;
-    dispatch({ type: "session_reset", payload: {} });
-    send({
-      event: "simulate",
-      employee_id: user?.employeeId ?? null,
-      auto_open: state.autoOpenEnabled,
-    });
-  }
+  const employeePayload = user?.employeeId ?? null;
 
   useEffect(() => {
     if (state.gateAnim) {
@@ -55,14 +57,14 @@ export default function AppAgent() {
 
   function handleRescan() {
     setRescanning(true);
-    dispatch({ type: "session_reset" });
+    dispatch({ type: "session_reset", payload: {} });
     if (wsConnected && send) send({ event: "session_reset" });
     setTimeout(() => setRescanning(false), 300);
   }
 
   function handleManualPlateSubmit(plate) {
     if (send) {
-      const ok = send({ event: "manual_plate", plate });
+      const ok = send({ event: "manual_plate", plate, employee_id: employeePayload });
       if (!ok) {
         dispatch({
           type: "anpr_result",
@@ -80,7 +82,7 @@ export default function AppAgent() {
 
   function handleOpenGate() {
     if (wsConnected && send) {
-      send({ event: "open_gate" });
+      send({ event: "open_gate", employee_id: employeePayload });
     } else {
       dispatch({ type: "gate_open_click" });
     }
@@ -89,7 +91,7 @@ export default function AppAgent() {
   function handleAutoOpenChange(checked) {
     dispatch({ type: "set_auto_open", payload: { enabled: checked } });
     if (wsConnected && send) {
-      send({ event: "set_auto_open", auto_open: checked });
+      send({ event: "set_auto_open", auto_open: checked, employee_id: employeePayload });
     }
   }
 
@@ -97,25 +99,28 @@ export default function AppAgent() {
     return (
       <LoginPage
         onLogin={login}
-        loading={authLoading}
-        error={authError}
+        loading={loading}
+        error={error}
         onClearError={clearError}
+        emailMode={usesBackendAuth}
       />
     );
   }
 
+  const adminNavEnabled =
+    usesBackendAuth && accessToken && (user?.role === "admin" || user?.role === "viewer");
+
   return (
     <>
-    <div className="screen">
+      <div className="screen">
         <div className="main-container">
           <Header
             wsConnected={wsConnected}
-            onStartVerification={handleStartVerification}
-            showSimulationControls={false}
-            startDisabled={!wsConnected}
+            backendConnected={backendConnected}
             offlineStatusLabel="OFFLINE"
             user={user}
             onLogout={logout}
+            adminNavEnabled={adminNavEnabled}
           />
 
           <div className="content">
@@ -174,4 +179,39 @@ export default function AppAgent() {
       />
     </>
   );
+}
+
+function AdminShell({ auth }) {
+  const { user, usesBackendAuth, accessToken, isAuthenticated, logout } = auth;
+
+  if (!usesBackendAuth || !accessToken || !isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (user?.role !== "admin" && user?.role !== "viewer") {
+    return <Navigate to="/" replace />;
+  }
+
+  return <AdminLayout user={user} onLogout={logout} />;
+}
+
+function AppAgentRoutes({ auth }) {
+  return (
+    <Routes>
+      <Route path="/admin" element={<AdminShell auth={auth} />}>
+        <Route index element={<Navigate to="orders" replace />} />
+        <Route path="orders" element={<OrdersPage />} />
+        <Route path="trucks" element={<TrucksPage />} />
+        <Route path="drivers" element={<DriversPage />} />
+        <Route path="alerts" element={<AlertsPage />} />
+        <Route path="configuration" element={<ConfigurationPage />} />
+      </Route>
+      <Route path="/*" element={<GateDashboard auth={auth} />} />
+    </Routes>
+  );
+}
+
+export default function AppAgent() {
+  const auth = useAuth();
+  return <AppAgentRoutes auth={auth} />;
 }

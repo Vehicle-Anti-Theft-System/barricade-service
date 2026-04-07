@@ -46,8 +46,6 @@ def _map_backend_to_ws_payload(data: dict) -> dict:
         base["truck_id"] = str(tid) if tid is not None else None
         if data.get("driver_name"):
             base["driver_name"] = data["driver_name"]
-        if data.get("expected_plate"):
-            base["expected_plate"] = data["expected_plate"]
     else:
         base["rfid"] = data.get("rfid_tag") or base.get("rfid")
         if data.get("alert_type"):
@@ -100,6 +98,9 @@ async def ingest_rfid_scan(body: RFIDScanIngest):
         raise HTTPException(status_code=500, detail="DEFAULT_BARRICADE_ID must be a valid UUID")
 
     payload = {"rfid_tag": body.rfid_tag.strip(), "barricade_id": barricade_id}
+    eid = session.employee_id
+    if eid:
+        payload["employee_id"] = eid
     logger.debug("POST /api/verify/rfid for RFID verify")
 
     try:

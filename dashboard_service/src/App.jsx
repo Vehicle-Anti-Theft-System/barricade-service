@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
 import {
   Header,
@@ -12,55 +12,33 @@ import {
 } from "./components";
 import { useVerificationState } from "./hooks/useVerificationState";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useBackendHealthState } from "./hooks/useBackendHealth";
+import { ANPR_STATES, BACKEND_URL } from "./constants";
 import { useAuth } from "./hooks/useAuth";
-import { ANPR_STATES } from "./constants";
 
 export default function App() {
-  const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    loading: authLoading,
+    error: authError,
+    login,
+    logout,
+    clearError,
+    usesBackendAuth,
+  } = useAuth();
   const [state, dispatch] = useVerificationState();
   const [wsConnected, setWsConnected] = useState(false);
   const [manualPlateOpen, setManualPlateOpen] = useState(false);
   const [rescanning, setRescanning] = useState(false);
-  const [simulateCase, setSimulateCase] = useState("success");
-  const wsRef = useRef(null);
+  const { backendConnected, setBackendConnected } = useBackendHealthState();
 
-  const { simulateDemoFlow, send } = useWebSocket(dispatch, {
+  const { send } = useWebSocket(dispatch, {
     onConnect: () => setWsConnected(true),
     onDisconnect: () => setWsConnected(false),
-    enableDemoMode: true,
+    onBackendHealth: BACKEND_URL ? setBackendConnected : undefined,
   });
 
-  function handleStartVerification() {
-    /** Align with offline demo: reset UI session so stale gateOpen cannot block Open barricade. */
-    dispatch({ type: "session_reset", payload: {} });
-    if (wsConnected && send) {
-      send({
-        event: "simulate",
-        scenario: simulateCase,
-        employee_id: user?.employeeId ?? null,
-        auto_open: state.autoOpenEnabled,
-      });
-    } else {
-      simulateDemoFlow?.(simulateCase);
-    }
-  }
-
-  wsRef.current = { simulateDemoFlow: handleStartVerification };
-
-  // Offline demo only: no API agent → nothing sends gate_decision. When online, the
-  // server is the only source for automatic opens (respects simulate `auto_open`).
-  useEffect(() => {
-    if (wsConnected) return;
-    if (
-      state.sessionPhase === "complete" &&
-      state.autoOpenEnabled &&
-      !state.gateOpen
-    ) {
-      dispatch({ type: "gate_decision", payload: { open: true, method: "auto" } });
-    }
-  }, [wsConnected, state.sessionPhase, state.autoOpenEnabled, state.gateOpen, dispatch]);
-
-  // Reset gate animation after a delay
   useEffect(() => {
     if (state.gateAnim) {
       const t = setTimeout(() => {
@@ -70,7 +48,6 @@ export default function App() {
     }
   }, [state.gateAnim, dispatch]);
 
-  // Show manual plate entry when ANPR requests it
   useEffect(() => {
     if (state.anpr?.status === ANPR_STATES.MANUAL_ENTRY) {
       setManualPlateOpen(true);
@@ -79,7 +56,7 @@ export default function App() {
 
   function handleRescan() {
     setRescanning(true);
-    dispatch({ type: "session_reset" });
+    dispatch({ type: "session_reset", payload: {} });
     if (wsConnected && send) send({ event: "session_reset" });
     setTimeout(() => setRescanning(false), 300);
   }
@@ -125,21 +102,22 @@ export default function App() {
         loading={authLoading}
         error={authError}
         onClearError={clearError}
+        emailMode={usesBackendAuth}
       />
     );
   }
 
   return (
     <>
-    <div className="screen">
+      <div className="screen">
         <div className="main-container">
           <Header
             wsConnected={wsConnected}
-            onStartVerification={handleStartVerification}
-            simulateCase={simulateCase}
-            onSimulateCaseChange={setSimulateCase}
+            backendConnected={backendConnected}
+            offlineStatusLabel="OFFLINE"
             user={user}
             onLogout={logout}
+            adminNavEnabled={false}
           />
 
           <div className="content">

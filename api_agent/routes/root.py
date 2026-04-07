@@ -2,10 +2,16 @@
 import logging
 
 from fastapi import APIRouter
+from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 
 @router.get("/")

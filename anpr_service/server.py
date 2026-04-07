@@ -80,6 +80,12 @@ app.add_middleware(
 )
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    from starlette.responses import Response
+    return Response(status_code=204)
+
+
 @app.get("/health")
 def health():
     logger.debug("GET /health")

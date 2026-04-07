@@ -13,6 +13,7 @@ EVENT_ANPR_MANUAL = "anpr_manual"
 EVENT_GATE_DECISION = "gate_decision"
 EVENT_ALERT_RAISED = "alert_raised"
 EVENT_SESSION_RESET = "session_reset"
+EVENT_BACKEND_HEALTH = "backend_health"
 
 # Inbound: Dashboard → API Agent
 CMD_SIMULATE = "simulate"

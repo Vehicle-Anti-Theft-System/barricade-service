@@ -28,54 +28,158 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-_UI_HTML = """<!DOCTYPE html>
+_UI_HTML = """\
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RFID Mock — Simulate scan</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.25rem; }
-    button { padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; }
-    pre { background: #f4f4f4; padding: 1rem; overflow: auto; border-radius: 6px; font-size: 0.85rem; }
-    .hint { color: #555; font-size: 0.9rem; margin-top: 1rem; }
-    .ref { margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid #ddd; }
-    .ref h2 { font-size: 1.05rem; margin: 0 0 0.5rem; }
-    .ref p { font-size: 0.9rem; color: #444; margin: 0 0 0.75rem; }
-    table.ref-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    table.ref-table th, table.ref-table td { border: 1px solid #ccc; padding: 0.45rem 0.6rem; text-align: left; }
-    table.ref-table th { background: #f0f0f0; font-weight: 600; }
-    table.ref-table tbody tr:nth-child(even) { background: #fafafa; }
-    table.ref-table code { font-size: 0.88em; }
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --bg: #f8f9fa; --surface: #fff; --border: #e0e0e0;
+      --text: #1a1a1a; --text2: #555; --accent: #1976d2;
+      --accent-hover: #1565c0; --success: #2e7d32; --error: #c62828;
+      --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+    .shell { max-width: 640px; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+    header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.5rem; }
+    header .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+    header h1 { font-size: 1.15rem; font-weight: 700; margin: 0; }
+    header .sub { font-size: .82rem; color: var(--text2); margin: 0; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.5rem; margin-bottom: 1.25rem; }
+    .card h2 { font-size: .95rem; font-weight: 700; margin: 0 0 .75rem; }
+    .scan-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    #scanBtn {
+      padding: .65rem 1.6rem; font-size: .95rem; font-weight: 600; border: none; border-radius: 8px;
+      background: var(--accent); color: #fff; cursor: pointer; transition: background .15s, transform .1s;
+    }
+    #scanBtn:hover:not(:disabled) { background: var(--accent-hover); }
+    #scanBtn:active:not(:disabled) { transform: scale(.97); }
+    #scanBtn:disabled { opacity: .55; cursor: not-allowed; }
+    #status {
+      font-size: .88rem; font-weight: 600; padding: .35rem .8rem; border-radius: 6px;
+      display: none; line-height: 1.3;
+    }
+    #status.ok { display: inline-block; background: #e8f5e9; color: var(--success); }
+    #status.err { display: inline-block; background: #ffebee; color: var(--error); }
+    #status.busy { display: inline-block; background: #e3f2fd; color: var(--accent); }
+    .log { margin-top: 1rem; max-height: 220px; overflow-y: auto; }
+    .log table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .log th, .log td { padding: .4rem .6rem; text-align: left; border-bottom: 1px solid var(--border); }
+    .log th { font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+    .log .tag { font-family: ui-monospace, monospace; }
+    .log .ok { color: var(--success); font-weight: 600; }
+    .log .fail { color: var(--error); font-weight: 600; }
+    .ref table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .ref th, .ref td { padding: .45rem .65rem; text-align: left; border-bottom: 1px solid var(--border); }
+    .ref th { font-weight: 600; color: var(--text2); }
+    .ref code { font-size: .88em; background: #f0f0f0; padding: 0 .3em; border-radius: 3px; }
+    .hint { font-size: .82rem; color: var(--text2); margin-top: .75rem; line-height: 1.45; }
+    .hint a { color: var(--accent); }
+    .empty { text-align: center; color: var(--text2); padding: 1rem 0; font-size: .85rem; }
   </style>
 </head>
 <body>
-  <h1>RFID mock — simulate hardware trigger</h1>
-  <p>Press the button to read the next mock tag and <strong>POST it to the API Agent</strong> only.</p>
-  <form method="post" action="/trigger">
-    <button type="submit">Simulate RFID scan</button>
-  </form>
-  <section class="ref" aria-labelledby="seed-ref-heading">
-    <h2 id="seed-ref-heading">Backend seed reference (<code>backend-service/seed.py</code>)</h2>
-    <p>Seeded trucks: RFID tag paired with license plate. After a successful RFID step, ANPR / manual entry should match this plate for that tag.</p>
-    <table class="ref-table">
-      <thead>
-        <tr><th>RFID tag</th><th>License plate</th></tr>
-      </thead>
+<div class="shell">
+  <header>
+    <span class="dot"></span>
+    <div>
+      <h1>RFID Mock Service</h1>
+      <p class="sub">Simulate hardware scans — push to API Agent</p>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>Trigger scan</h2>
+    <div class="scan-row">
+      <button id="scanBtn" type="button">Scan next tag</button>
+      <span id="status"></span>
+    </div>
+    <div class="log">
+      <table>
+        <thead><tr><th>#</th><th>Tag</th><th>HTTP</th><th>Result</th></tr></thead>
+        <tbody id="logBody">
+          <tr><td colspan="4" class="empty">No scans yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card ref">
+    <h2>Seed reference</h2>
+    <p class="hint" style="margin-top:0">Tags below match <code>backend-service/seed.py</code>.
+    After RFID validates, ANPR / manual plate must match the paired license plate.</p>
+    <table>
+      <thead><tr><th>RFID tag</th><th>License plate</th></tr></thead>
       <tbody>
         <tr><td><code>TRK-0042</code></td><td><code>MH04AB1234</code></td></tr>
         <tr><td><code>TRK-0078</code></td><td><code>JH01CD5678</code></td></tr>
         <tr><td><code>TRK-0101</code></td><td><code>MH12EF9012</code></td></tr>
       </tbody>
     </table>
-  </section>
-  <p class="hint">Flow is one-way: RFID service → API Agent (<code>POST /rfid/scan</code>). Results appear on the dashboard via WebSocket.</p>
-  <p class="hint">API: <code>POST /trigger</code> — JSON shows transport result only.</p>
-  <p class="hint">Open <a href="/docs">/docs</a> for Swagger.</p>
+  </div>
+
+  <p class="hint">One-way flow: RFID service &rarr; API Agent <code>POST /rfid/scan</code>.
+  Verification results appear on the dashboard via WebSocket.</p>
+  <p class="hint"><a href="/docs">Swagger docs</a> &middot; <a href="/health">Health check</a></p>
+</div>
+
+<script>
+(function(){
+  const btn = document.getElementById("scanBtn");
+  const statusEl = document.getElementById("status");
+  const logBody = document.getElementById("logBody");
+  let count = 0;
+  let firstScan = true;
+
+  function setStatus(cls, text) {
+    statusEl.className = cls;
+    statusEl.textContent = text;
+    statusEl.style.display = "inline-block";
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    setStatus("busy", "Scanning…");
+    try {
+      const res = await fetch("/trigger", { method: "POST" });
+      const data = await res.json();
+      const tag = data.rfid_tag || "?";
+      const ok = data.ingest?.http_ok;
+      const httpStatus = data.ingest?.http_status ?? "—";
+      count++;
+
+      if (firstScan) { logBody.innerHTML = ""; firstScan = false; }
+
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + count + "</td>" +
+        '<td class="tag">' + tag + "</td>" +
+        "<td>" + httpStatus + "</td>" +
+        '<td class="' + (ok ? "ok" : "fail") + '">' + (ok ? "Sent" : "Failed") + "</td>";
+      logBody.prepend(tr);
+
+      setStatus(ok ? "ok" : "err", ok ? "Tag " + tag + " sent" : "Send failed — " + httpStatus);
+    } catch (e) {
+      setStatus("err", "Network error");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
 </body>
 </html>
 """
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    from starlette.responses import Response
+    return Response(status_code=204)
 
 
 @app.get("/")

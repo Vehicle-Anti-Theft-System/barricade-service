@@ -58,10 +58,10 @@ async def _mock_rfid_hydrate_and_broadcast(ws: WebSocket) -> bool:
     bid = default_barricade_id()
     if bid and backend_api_key():
         try:
-            data = await backend_post_json(
-                "/api/verify/rfid",
-                {"rfid_tag": mock_rfid_for_backend, "barricade_id": bid},
-            )
+            rfid_body: dict = {"rfid_tag": mock_rfid_for_backend, "barricade_id": bid}
+            if session.employee_id:
+                rfid_body["employee_id"] = session.employee_id
+            data = await backend_post_json("/api/verify/rfid", rfid_body)
             session.set_rfid_result(data)
             hydrated = data.get("status") == "VALIDATED"
             if not hydrated:
@@ -79,7 +79,6 @@ async def _mock_rfid_hydrate_and_broadcast(ws: WebSocket) -> bool:
                 truck_id=session.truck_id,
                 order_id=session.order_id,
                 driver_name=session.driver_name,
-                expected_plate=session.expected_plate,
             ),
         )
     else:
@@ -106,11 +105,12 @@ async def run_mock_verification(
     When backend URL, API key, and DEFAULT_BARRICADE_ID are set, the RFID step
     calls POST /api/verify/rfid for TRK-0042 so server session matches the DB.
     """
-    _ = employee_id
     logger.info("Mock verification started (auto_open=%s)", auto_open)
     manager = get_manager()
     session = get_session()
     session.reset()
+    if employee_id:
+        session.employee_id = str(employee_id).strip()
     msg = event_message
     delays = {"anpr_process": 0.5, "anpr_result": 1.0, "gate": 0.3}
 
@@ -119,7 +119,7 @@ async def run_mock_verification(
     await manager.send_to(ws, msg(EVENT_ANPR_PROCESSING))
     await asyncio.sleep(delays["anpr_process"])
 
-    mock_plate = (session.expected_plate if hydrated else None) or "MH12AB4821"
+    mock_plate = "MH12AB4821"
     await manager.send_to(
         ws,
         msg(
@@ -164,11 +164,14 @@ async def _capture_plate() -> dict:
 
 async def _verify_anpr_with_backend(rfid_tag: str, plate: str, barricade_id: str) -> dict:
     """Call backend POST /api/verify/anpr (retries + API key via backend_client)."""
+    session = get_session()
     payload = {
         "rfid_tag": rfid_tag,
         "plate_detected": plate,
         "barricade_id": barricade_id,
     }
+    if session.employee_id:
+        payload["employee_id"] = session.employee_id
     logger.debug("Backend POST /api/verify/anpr (rfid_tag=%s plate=%s)", rfid_tag, plate)
     data = await backend_post_json("/api/verify/anpr", payload)
     logger.debug("Backend /verify/anpr response status field: %s", data.get("status"))
@@ -241,6 +244,21 @@ async def run_anpr_pipeline() -> None:
 
     if not plate:
         logger.warning("ANPR pipeline: no plate after %d attempts; requesting manual entry", ANPR_MAX_RETRIES)
+        if barricade_id and session.rfid_tag and backend_api_key():
+            try:
+                await backend_post_json(
+                    "/api/verify/anpr-failure",
+                    {
+                        "rfid_tag": session.rfid_tag,
+                        "barricade_id": barricade_id,
+                        "employee_id": session.employee_id,
+                        "attempts": ANPR_MAX_RETRIES,
+                        "detail": "No plate returned from ANPR /capture after retries",
+                    },
+                )
+                logger.info("Backend anpr_failure alert recorded for tag=%s", session.rfid_tag)
+            except BackendRequestError as exc:
+                logger.warning("Backend anpr_failure call failed: %s", exc)
         await manager.broadcast(msg(EVENT_ANPR_MANUAL))
         return
 
@@ -269,7 +287,6 @@ async def run_anpr_pipeline() -> None:
     }
     if status != "VALIDATED":
         ws_payload["detail"] = anpr_result.get("detail", "Plate mismatch")
-        ws_payload["expected_plate"] = anpr_result.get("expected_plate")
         ws_payload["alert_type"] = anpr_result.get("alert_type")
 
     await manager.broadcast(ws_payload)
@@ -352,7 +369,6 @@ async def verify_manual_plate(plate: str) -> None:
     }
     if status != "VALIDATED":
         ws_payload["detail"] = anpr_result.get("detail", "Plate mismatch")
-        ws_payload["expected_plate"] = anpr_result.get("expected_plate")
 
     await manager.broadcast(ws_payload)
 
