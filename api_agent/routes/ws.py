@@ -15,10 +15,10 @@ from api_agent.core.events import (
     EVENT_SESSION_RESET,
 )
 from api_agent.services.session import get_session
+from api_agent.services.backend_health import send_backend_health_to_client
 from api_agent.services.verification import (
     event_message,
     open_gate_live,
-    run_mock_verification,
     verify_manual_plate,
 )
 
@@ -46,6 +46,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     try:
         await manager.send_to(ws, event_message(EVENT_SESSION_RESET))
         logger.debug("Sent initial session_reset to new WebSocket client")
+        await send_backend_health_to_client(ws)
+        logger.debug("Sent backend_health to new WebSocket client")
 
         while True:
             raw = await ws.receive_text()
@@ -62,19 +64,17 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             logger.info("WebSocket inbound: %s", event)
 
             if event in (CMD_SIMULATE, CMD_START_VERIFICATION):
-                auto_open = _parse_auto_open(data)
-                get_session().auto_open_after_verify = auto_open
-                employee_id = data.get("employee_id") or None
-                logger.info(
-                    "simulate/start_verification: auto_open=%s employee_id=%s",
-                    auto_open,
-                    "set" if employee_id else "none",
+                logger.warning(
+                    "Ignoring WebSocket %r — live verification starts via RFID POST /rfid/scan, not mock/simulate.",
+                    event,
                 )
-                await run_mock_verification(ws, auto_open=auto_open, employee_id=employee_id)
 
             elif event == CMD_SET_AUTO_OPEN:
                 enabled = _parse_auto_open(data)
                 get_session().auto_open_after_verify = enabled
+                eid = data.get("employee_id")
+                if eid:
+                    get_session().employee_id = str(eid).strip()
                 logger.info("set_auto_open: %s", enabled)
 
             elif event == CMD_SESSION_RESET:
@@ -83,6 +83,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 await manager.broadcast(event_message(EVENT_SESSION_RESET))
 
             elif event == CMD_MANUAL_PLATE:
+                eid = data.get("employee_id")
+                if eid:
+                    get_session().employee_id = str(eid).strip()
                 plate = (data.get("plate") or "").strip().upper()
                 if plate:
                     logger.info("manual_plate: plate length=%s", len(plate))
@@ -91,6 +94,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     logger.warning("manual_plate: empty plate ignored")
 
             elif event == CMD_OPEN_GATE:
+                eid = data.get("employee_id")
+                if eid:
+                    get_session().employee_id = str(eid).strip()
                 logger.info("open_gate command from WebSocket")
                 await open_gate_live(method="manual")
 

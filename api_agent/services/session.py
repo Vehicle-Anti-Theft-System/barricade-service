@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class VerificationSession:
     rfid_tag: str | None = None
-    expected_plate: str | None = None
     order_id: str | None = None
     truck_id: str | None = None
     driver_name: str | None = None
@@ -24,11 +23,12 @@ class VerificationSession:
     rfid_validated: bool = False
     # Dashboard "Open Automatically" + simulate auto_open; not cleared on verification reset
     auto_open_after_verify: bool = True
+    # Last employee_id from WebSocket (verify alerts / anpr_failure); not cleared on reset
+    employee_id: str | None = None
 
     def reset(self) -> None:
         logger.debug("Session reset (clearing verification context)")
         self.rfid_tag = None
-        self.expected_plate = None
         self.order_id = None
         self.truck_id = None
         self.driver_name = None
@@ -39,7 +39,6 @@ class VerificationSession:
     def set_rfid_result(self, data: dict) -> None:
         # Backend JSON uses rfid_tag; WebSocket rfid_check_result uses rfid
         self.rfid_tag = data.get("rfid_tag") or data.get("rfid")
-        self.expected_plate = data.get("expected_plate")
         self.order_id = str(data["order_id"]) if data.get("order_id") else None
         self.truck_id = str(data["truck_id"]) if data.get("truck_id") else None
         self.driver_name = data.get("driver_name")

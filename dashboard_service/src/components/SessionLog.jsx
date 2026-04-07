@@ -1,6 +1,5 @@
 import { useRef, useEffect, useMemo } from "react";
-import { Button, Chip } from "@mui/material";
-import RefreshIcon from "@mui/icons-material/Refresh";
+import { Chip } from "@mui/material";
 
 function sessionStatusLabel(phase) {
   switch (phase) {
@@ -44,7 +43,7 @@ function statusChipColor(variant) {
   }
 }
 
-export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
+export function SessionLog({ logs, sessionPhase }) {
   const logsRef = useRef(null);
 
   const rows = useMemo(() => logs.map(normalizeLogEntry), [logs]);
@@ -62,24 +61,6 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
           <h3>Activity</h3>
           <p className="logs-phase">{sessionStatusLabel(sessionPhase)}</p>
         </div>
-        <div className="logs-actions">
-          <Button
-            variant="outlined"
-            color="primary"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={onRescan}
-            disabled={isRescanning}
-            sx={{
-              textTransform: "none",
-              fontWeight: 600,
-              fontSize: "0.8125rem",
-              borderRadius: "8px",
-            }}
-          >
-            {isRescanning ? "Resetting…" : "Rescan"}
-          </Button>
-        </div>
       </div>
       <div className="logs-table-wrapper" ref={logsRef}>
         <table className="logs-table">
@@ -94,7 +75,7 @@ export function SessionLog({ logs, sessionPhase, onRescan, isRescanning }) {
             {rows.length === 0 && (
               <tr>
                 <td colSpan="3" className="logs-empty">
-                  No events yet. Start verification to see a live audit trail.
+                  No events yet. Scan an RFID tag to begin verification.
                 </td>
               </tr>
             )}
