@@ -1,0 +1,18 @@
+[project]
+name = "api-agent"
+version = "0.1.0"
+description = "FastAPI + WebSocket orchestrator for barricade RFID + ANPR verification"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "httpx>=0.27.0",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[project.scripts]
+api-agent = "api_agent.main:main"
+
+[tool.setuptools]
+packages = ["api_agent", "api_agent.core", "api_agent.routes", "api_agent.services"]
+package-dir = { "api_agent" = "." }

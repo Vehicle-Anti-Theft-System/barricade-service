@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# One-shot install for barricade edge: Python workspace (uv) + dashboard (npm).
+# Run from repo root: ./bin/setup  or  ./bin.setup
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+DASH_DIR="${ROOT}/dashboard_service"
+SKIP_DASHBOARD=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-dashboard) SKIP_DASHBOARD=1; shift ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: ./bin/setup [options]
+
+  Installs all barricade edge dependencies:
+    • Python: uv sync (workspace: api_agent, rfid_service, anpr_service + ANPR/ML deps)
+    • Dashboard: npm install in dashboard_service/ (unless skipped)
+
+Options:
+  --skip-dashboard   Do not run npm install (CI / headless / Python-only).
+  -h, --help         Show this help.
+
+Requires:
+  - uv — https://docs.astral.sh/uv/  (curl -LsSf https://astral.sh/uv/install.sh | sh)
+  - Node.js + npm — for the React dashboard (optional if --skip-dashboard)
+
+First run note:
+  uv sync can take several minutes (PyTorch / EasyOCR / YOLO stack).
+
+Next steps:
+  Edit .env: BACKEND_BASE_URL, DEFAULT_BARRICADE_ID, BACKEND_API_KEY (must match backend API_KEY).
+  ./run-barricade.sh
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1 (use --help)" >&2
+      exit 1
+      ;;
+  esac
+done
+
+echo "==> barricade-service setup (root: $ROOT)"
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "error: 'uv' not found. Install it:" >&2
+  echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  echo "  # or: brew install uv" >&2
+  exit 1
+fi
+
+if [[ -f .python-version ]]; then
+  echo "==> Python version pin: $(tr -d '\n' < .python-version) (uv will use this)"
+fi
+
+echo "==> uv sync (workspace + ANPR/ML dependencies — first run may be slow)…"
+uv sync
+
+if [[ ! -f .env ]]; then
+  if [[ -f .env.example ]]; then
+    cp .env.example .env
+    echo "==> Created .env from .env.example — set BACKEND_BASE_URL, DEFAULT_BARRICADE_ID, BACKEND_API_KEY (match backend API_KEY)."
+  else
+    echo "==> warning: no .env.example; create .env manually." >&2
+  fi
+else
+  echo "==> .env already present (left unchanged)."
+fi
+
+if [[ "$SKIP_DASHBOARD" -eq 1 ]]; then
+  echo "==> Skipped dashboard npm install (--skip-dashboard)."
+elif [[ ! -d "$DASH_DIR" ]]; then
+  echo "==> warning: dashboard_service/ missing; skipping npm." >&2
+elif ! command -v npm >/dev/null 2>&1; then
+  echo "==> warning: 'npm' not found — install Node.js or run with --skip-dashboard." >&2
+else
+  echo "==> npm install (dashboard_service)…"
+  (cd "$DASH_DIR" && npm install)
+  echo "==> Dashboard dependencies installed."
+fi
+
+echo ""
+echo "Setup finished."
+echo "  Ensure BACKEND_API_KEY in .env matches the central backend API_KEY."
+echo "  Run stack:  ./run-barricade.sh"
+echo "  API Agent:   uv run api-agent"
+echo "  ANPR:        uv run anpr-service"
