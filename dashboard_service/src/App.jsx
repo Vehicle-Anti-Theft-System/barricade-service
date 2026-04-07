@@ -123,12 +123,7 @@ export default function App() {
           <div className="content">
             <div className="left">
               <CameraFeed anpr={state.anpr} sessionPhase={state.sessionPhase} />
-              <SessionLog
-                logs={state.logs}
-                sessionPhase={state.sessionPhase}
-                onRescan={handleRescan}
-                isRescanning={rescanning}
-              />
+              <SessionLog logs={state.logs} sessionPhase={state.sessionPhase} />
             </div>
 
             <div className="right">
