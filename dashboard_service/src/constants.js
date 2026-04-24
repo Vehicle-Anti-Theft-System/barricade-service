@@ -25,7 +25,8 @@ export const ANPR_STATES = {
 const API_AGENT_HOST = import.meta.env.VITE_API_AGENT_HOST || "localhost:8080";
 const ANPR_HOST = import.meta.env.VITE_ANPR_HOST || "localhost:8001";
 
-/** Central backend for JWT login and admin API (optional — mock login if unset). */
+/** API Agent base URL for JWT login and admin API (the agent proxies /api/* to the backend).
+ *  Unset → offline demo login. */
 export const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "").replace(/\/$/, "");
 
 export const MJPEG_STREAM_URL = `http://${ANPR_HOST}/video_feed`;
