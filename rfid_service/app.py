@@ -1,11 +1,21 @@
-"""Mock RFID service — push-only to API Agent (no data pulled from the agent)."""
+"""RFID service — push-only to API Agent (no data pulled from the agent).
+
+Two modes, selected via `rfid.mode` in barricade_config.json or the
+`RFID_MODE` env var:
+
+- `serial` (production): reads tag lines from an Arduino-connected USB serial
+  device and pushes each to the API Agent. See rfid_service/serial_reader.py.
+- `mock` (dev/demo): cycles a small list of seed tags on POST /trigger or via
+  the /ui page.
+"""
 
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
+from rfid_service.config import rfid_mode
 from rfid_service.logging_config import configure_logging
 from rfid_service.push import push_rfid_tag
 from rfid_service.service import mock_rfid_queue
@@ -16,15 +26,21 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     configure_logging()
-    logger.info("RFID service (mock) starting on port 8002 — push-only to API Agent")
+    mode = rfid_mode()
+    logger.info("RFID service starting on port 8002 — mode=%s (push-only to API Agent)", mode)
+    # Start the serial reader unconditionally; it idles when mode != "serial" and
+    # picks up dashboard-driven config changes live via barricade_config.json mtime.
+    from rfid_service.serial_reader import reader
+    reader.start()
     yield
+    reader.stop()
     logger.info("RFID service shutdown")
 
 
 app = FastAPI(
-    title="RFID Service (Mock)",
-    version="0.2.0",
-    description="Simulates tag reads; forwards only { rfid_tag } to the API Agent via HTTP POST.",
+    title="RFID Service",
+    version="0.3.0",
+    description="Reads tags (Arduino serial or mock) and forwards only { rfid_tag } to the API Agent via HTTP POST.",
     lifespan=lifespan,
 )
 
@@ -185,15 +201,16 @@ def favicon():
 @app.get("/")
 def root():
     logger.debug("GET /")
+    mode = rfid_mode()
     return {
         "service": "rfid-service",
-        "mode": "mock",
+        "mode": mode,
         "flow": "unidirectional_push",
         "description": "Sends rfid_tag to API Agent only; does not consume agent payloads.",
         "routes": {
             "health": "/health",
             "ui": "/ui",
-            "trigger": "POST /trigger — cycles mock tag, POSTs to API Agent ingest URL",
+            "trigger": "POST /trigger — cycles mock tag (always available for manual testing)",
         },
     }
 
@@ -208,7 +225,41 @@ def mock_ui():
 @app.get("/health")
 def health():
     logger.debug("GET /health")
-    return {"status": "ok", "service": "rfid-service", "mode": "mock", "flow": "push_only"}
+    from rfid_service.serial_reader import reader
+    return {
+        "status": "ok",
+        "service": "rfid-service",
+        "mode": rfid_mode(),
+        "flow": "push_only",
+        "serial": reader.status(),
+    }
+
+
+_GATE_OPEN_COMMAND = "open_gate"
+
+
+@app.post("/gate/open")
+def gate_open():
+    """
+    Fire the physical gate actuator by writing 'open_gate\\n' to the open
+    serial port. Called by the API Agent after successful RFID + ANPR
+    verification, or when an operator clicks "Open Barricade".
+
+    Returns 503 if the serial reader is not currently connected to a device.
+    """
+    from rfid_service.serial_reader import reader
+    logger.info("Gate actuator request received → writing %r to serial", _GATE_OPEN_COMMAND)
+    ok = reader.send_command(_GATE_OPEN_COMMAND)
+    if not ok:
+        raise HTTPException(
+            status_code=503,
+            detail="Serial port not connected; cannot actuate gate.",
+        )
+    return {
+        "ok": True,
+        "command": _GATE_OPEN_COMMAND,
+        "port": reader.status().get("port"),
+    }
 
 
 @app.post("/trigger")
