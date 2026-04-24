@@ -7,8 +7,8 @@
     "resolution_height": 720
   },
   "rfid": {
-    "mode": "mock",
-    "com_port": "",
+    "mode": "serial",
+    "com_port": "/dev/cu.usbmodem2101",
     "baud_rate": 9600,
     "api_agent_ingest_url": "http://localhost:8080/rfid/scan"
   }

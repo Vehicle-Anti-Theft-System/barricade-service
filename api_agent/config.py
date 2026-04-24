@@ -30,6 +30,11 @@ def anpr_service_url() -> str:
     return os.getenv("ANPR_SERVICE_URL", "http://localhost:8001").rstrip("/")
 
 
+def rfid_service_url() -> str:
+    """Base URL of the local RFID service (for firing POST /gate/open)."""
+    return os.getenv("RFID_SERVICE_URL", "http://localhost:8002").rstrip("/")
+
+
 def default_barricade_id() -> str | None:
     """UUID string for POST /api/verify/rfid. Set in production."""
     v = os.getenv("DEFAULT_BARRICADE_ID", "").strip()

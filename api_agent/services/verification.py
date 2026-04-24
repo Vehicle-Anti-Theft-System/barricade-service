@@ -17,6 +17,7 @@ from api_agent.config import (
     anpr_service_url,
     backend_api_key,
     default_barricade_id,
+    rfid_service_url,
 )
 from api_agent.core import get_manager
 from api_agent.core.events import (
@@ -37,6 +38,38 @@ logger = logging.getLogger(__name__)
 def event_message(event: str, **kwargs: Any) -> dict:
     """Build a WebSocket message: { event, ...payload }."""
     return {"event": event, **kwargs}
+
+
+async def _fire_gate_actuator() -> None:
+    """Tell the local RFID service to write OPEN over serial to the Arduino.
+
+    Best-effort: actuator failure is logged but does not alter the verification
+    flow, since the dashboard broadcast and backend entry log have already
+    happened by the time this runs.
+    """
+    url = f"{rfid_service_url()}/gate/open"
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.post(url)
+    except httpx.RequestError as exc:
+        logger.warning("Gate actuator request failed url=%s err=%s", url, exc)
+        return
+    if r.is_success:
+        logger.info("Gate actuator fired OK http=%s url=%s", r.status_code, url)
+    else:
+        logger.warning(
+            "Gate actuator non-success http=%s body=%s",
+            r.status_code,
+            (r.text or "")[:200],
+        )
+
+
+async def _emit_gate_open(method: str) -> None:
+    """Broadcast gate_decision(open=True) to the dashboard AND trigger the physical actuator."""
+    manager = get_manager()
+    await manager.broadcast(event_message(EVENT_GATE_DECISION, open=True, method=method))
+    logger.info("Broadcast gate_decision open=True method=%s", method)
+    await _fire_gate_actuator()
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +340,7 @@ async def run_anpr_pipeline() -> None:
 
         await asyncio.sleep(0.3)
         if session.auto_open_after_verify:
-            await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="auto"))
+            await _emit_gate_open("auto")
         logger.info("ANPR pipeline complete (VALIDATED plate=%s)", plate)
     else:
         logger.info("ANPR pipeline complete (FAILED status=%s)", status)
@@ -392,7 +425,7 @@ async def verify_manual_plate(plate: str) -> None:
             await asyncio.sleep(0.3)
             # Dashboard log: "auto" = opened because Open Automatically is on (policy).
             # Backend gate_method may still be "manual" for audit (manual plate entry path).
-            await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method="auto"))
+            await _emit_gate_open("auto")
         else:
             logger.info(
                 "Manual plate VALIDATED but auto_open_after_verify=false; "
@@ -429,5 +462,4 @@ async def open_gate_live(method: str = "manual") -> None:
             bool(session.rfid_tag),
         )
 
-    await manager.broadcast(msg(EVENT_GATE_DECISION, open=True, method=method))
-    logger.info("Broadcast gate_decision open=True method=%s", method)
+    await _emit_gate_open(method)

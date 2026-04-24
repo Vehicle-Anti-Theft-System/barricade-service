@@ -150,7 +150,8 @@ export function ConfigurationPage() {
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3} flexWrap="wrap" gap={1}>
         <Box>
           <Typography variant="body2" color="text.secondary">
-            Edge device hardware settings. Changes take effect after service restart.
+            Edge device hardware settings. RFID mode / port / baud apply within a few seconds of saving.
+            Camera changes take effect after the ANPR service restarts.
           </Typography>
         </Box>
         <Button
