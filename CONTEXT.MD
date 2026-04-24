@@ -1,8 +1,10 @@
 # Mine Site Anti-Theft Vehicle Detection System — Barricade Edge
 
-**Last updated:** 2026-04-08  
+**Last updated:** 2026-04-24
 
-**Purpose:** Restore **full project context** for `barricade-service/` (local edge). Central API + DB live in **`backend-service/`** (e.g. AWS).  
+**Purpose:** Restore **full project context** for `barricade-service/` (local edge). Central API + DB live in **`backend-service/`** (e.g. AWS).
+
+> **Architecture change (2026-04):** the **API Agent is now the single ingress** for all browser traffic to the central backend. The dashboard no longer calls the backend directly — it calls the agent on `/api/*`, and the agent proxies to `BACKEND_BASE_URL`. `/api/verify/*` is blocked at the proxy (agent-internal only via `X-API-Key`). `VITE_BACKEND_URL` now points at the **API Agent origin**, not the backend.
 
 **Related docs (read these for depth):**
 
@@ -25,22 +27,31 @@
                     │  X-API-Key  →  /api/verify/*            │
                     │  Bearer JWT →  /api/auth, /api/orders…  │
                     └────────────────────▲────────────────────┘
-                                         │ HTTPS
-                                         │
+                                         │ HTTP/HTTPS
+                                         │ (agent is the ONLY caller)
     ┌────────────────────────────────────┴────────────────────────────┐
     │  GATE PC — barricade-service/ (THIS REPO FOLDER)                   │
     │                                                                    │
-    │   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐         │
-    │   │ RFID :8002 │────►│ API Agent   │────►│ ANPR :8001  │         │
-    │   │ (push only)│     │ :8080       │     │ MJPEG+capture│         │
-    │   └─────────────┘     │ HTTP + WS   │     └─────────────┘         │
-    │                       └──────┬──────┘                              │
-    │                              │ ws://…/ws                          │
-    │                              ▼                                    │
-    │                       ┌─────────────┐                             │
-    │                       │ Dashboard   │  REST (JWT) ──────────────┼──► :8000
-    │                       │ Vite :5173  │  (when VITE_BACKEND_URL)   │
-    │                       └─────────────┘                             │
+    │   ┌─────────────┐     ┌──────────────────┐     ┌─────────────┐    │
+    │   │ RFID :8002 │────►│ API Agent :8080  │────►│ ANPR :8001  │    │
+    │   │ (push only)│     │ HTTP + WS        │     │ MJPEG+capture│    │
+    │   └─────────────┘     │                  │     └─────────────┘    │
+    │                       │  ┌────────────┐  │                        │
+    │                       │  │ /api/* proxy│──┼──► backend (/api/*)   │
+    │                       │  │  browser   │  │    forwards Bearer JWT │
+    │                       │  │  Bearer JWT │  │                        │
+    │                       │  │  /api/verify│  │                        │
+    │                       │  │   → 404    │  │                        │
+    │                       │  └────────────┘  │                        │
+    │                       └──────┬──────┬────┘                        │
+    │                              │WS    │REST /api/* (via proxy)     │
+    │                              ▼      ▼                             │
+    │                       ┌──────────────────┐                        │
+    │                       │ Dashboard :5173  │                        │
+    │                       │ (never talks to  │                        │
+    │                       │  the backend     │                        │
+    │                       │  directly)       │                        │
+    │                       └──────────────────┘                        │
     │                                                                    │
     │  Agent polls GET …/health/live → pushes backend_health on WS      │
     └────────────────────────────────────────────────────────────────────┘
@@ -78,7 +89,7 @@
 | **2-factor verification** | ✅ | **RFID + ANPR only** (no fingerprint; schema in `backend-service`). |
 | **ANPR library** | ✅ | `anpr_service/anpr_service.py` — YOLOv8 + EasyOCR + SORT: `process_image`, `process_video`, `process_camera`, `capture_and_process_frame`. |
 | **ANPR HTTP server** | ✅ | `anpr_service/server.py` — FastAPI: `GET /health`, `GET /video_feed` (MJPEG), `POST /capture`. |
-| **API Agent** | ✅ | `api_agent/` — FastAPI + WebSocket `/ws`. Routes: `GET /`, `GET /health`, `POST /rfid/scan`, `WebSocket /ws`. **Live flow:** RFID ingest → backend `POST /api/verify/rfid` → background **ANPR pipeline** (`POST` ANPR `/capture`, retries, `anpr_manual`) → backend `POST /api/verify/anpr` → **only if** session `auto_open_after_verify` is true: `POST /api/verify/gate-open` + `gate_decision` (auto). **Manual plate:** submitting the plate dialog does **not** auto-open the gate when the flag is false; operator uses **Open Barricade** (`open_gate`). **Mock flow:** `simulate` / `start_verification` with optional `auto_open`. **Session:** `services/session.py` — RFID context + `auto_open_after_verify` (not cleared on verification `reset()`). See `api_agent/CONTEXT.MD`. |
+| **API Agent** | ✅ | `api_agent/` — FastAPI + WebSocket `/ws`. Routes: `GET /`, `GET /health`, `POST /rfid/scan`, `WebSocket /ws`, `GET`/`PUT /config`, and the new **`/api/{path:path}` pass-through proxy** (`routes/proxy.py`) for browser → backend traffic. **Live flow:** RFID ingest → backend `POST /api/verify/rfid` → background **ANPR pipeline** (`POST` ANPR `/capture`, retries, `anpr_manual`) → backend `POST /api/verify/anpr` → **only if** session `auto_open_after_verify` is true: `POST /api/verify/gate-open` + `gate_decision` (auto). **Manual plate:** submitting the plate dialog does **not** auto-open the gate when the flag is false; operator uses **Open Barricade** (`open_gate`). **Mock flow:** `simulate` / `start_verification` with optional `auto_open`. **Session:** `services/session.py` — RFID context + `auto_open_after_verify` (not cleared on verification `reset()`). See `api_agent/CONTEXT.MD`. |
 | **Backend health on WS** | ✅ | Agent polls `BACKEND_BASE_URL/health/live`, broadcasts `backend_health` to dashboard (header “Server” line). |
 | **RFID Service** | ✅ Mock | `rfid_service/` — **Unidirectional:** only **sends** `{ "rfid_tag" }` to API Agent `POST /rfid/scan`. `POST /trigger` cycles mock tags; `GET /ui` for testing. **No** pull/peek/list APIs. |
 | **React Dashboard** | ✅ | `dashboard_service/` — Vite + React + **MUI v5**. `App.jsx` (demo) vs `AppAgent.jsx` (agent build). `useVerificationState`: RFID + ANPR + **`autoOpenEnabled`**, activity log (**max 50** rows, FIFO). **Gate:** **Open Barricade** disabled after open until **Rescan** (`session_reset`). **JWT login** + **admin screens** when `VITE_BACKEND_URL` set — see `dashboard_service/CONTEXT.MD`. |
@@ -149,15 +160,18 @@ BARRICADE LOCAL SYSTEM (one per entry point)
 ├── RFID Service          ✅ Mock — push-only POST → API Agent /rfid/scan
 ├── ANPR Service          ✅ Library + FastAPI HTTP (MJPEG + /capture)
 ├── API Agent             ✅ FastAPI + WebSocket orchestrator
-│                         ├── routes: root, health, rfid_scan, ws
-│                         ├── services: verification (mock + live), session
+│                         ├── routes: root, health, rfid_scan, ws, config,
+│                         │           proxy  (/api/{path:path} → backend)
+│                         ├── services: verification (mock + live), session,
+│                         │             backend_client (X-API-Key → verify)
 │                         └── polls backend health → backend_health on WS
-└── React Dashboard       ✅ Vite + MUI — gate UI + /admin (JWT when configured)
+└── React Dashboard       ✅ Vite + MUI — gate UI + /admin (JWT via agent proxy)
 
 CENTRAL BACKEND (backend-service/ — cloud or local :8000)
-├── Verification APIs     ✅ /api/verify/*
+├── Verification APIs     ✅ /api/verify/*   (only API Agent calls these)
 ├── Data + alerts         ✅ MongoDB (Beanie)
 └── Users + JWT           ✅ /api/auth/login, RBAC for CRUD
+                              (reached via agent proxy, not browser)
 ```
 
 ### Communication matrix
@@ -166,14 +180,34 @@ CENTRAL BACKEND (backend-service/ — cloud or local :8000)
 |------|----|----------|--------|
 | Dashboard | API Agent | WebSocket | ✅ `ws://…/ws` (`VITE_API_AGENT_HOST`) |
 | Dashboard | ANPR Service | HTTP MJPEG | ✅ `http://…/video_feed` (`VITE_ANPR_HOST`) |
-| Dashboard | Central backend | HTTPS REST | ✅ When `VITE_BACKEND_URL` — login + admin API (**not** used for liveness; see below) |
+| Dashboard | **API Agent `/api/*` proxy** | HTTP REST + Bearer JWT | ✅ When `VITE_BACKEND_URL` is set — login + admin CRUD. `VITE_BACKEND_URL` points at the **agent**, not the backend. |
 | API Agent | Dashboard | WebSocket | ✅ Events per `core/events.py` + `backend_health` |
 | RFID Service | API Agent | HTTP POST `{ "rfid_tag" }` → `/rfid/scan` | ✅ One-way |
 | API Agent | ANPR Service | HTTP `POST /capture` | ✅ |
-| API Agent | Backend | HTTPS REST | ✅ `BACKEND_BASE_URL` + `BACKEND_API_KEY` |
+| API Agent | Backend (verify) | HTTP REST + `X-API-Key` | ✅ `POST /api/verify/*` via `services/backend_client.py` |
+| API Agent | Backend (proxy passthrough) | HTTP REST + forwarded Bearer JWT | ✅ `GET/POST/PUT/PATCH/DELETE /api/*` except `/api/verify/*` (blocked 404) |
 | API Agent | Backend | Health poll | ✅ `GET …/health/live` → WS `backend_health` to dashboard |
 
-**Liveness:** The **browser does not** poll the central backend for “Server” status; the **API Agent** does and forwards via **`backend_health`**.
+**Liveness:** The **browser does not** poll the central backend for "Server" status; the **API Agent** does and forwards via **`backend_health`**.
+
+**Backend direct access:** the browser never calls the central backend directly. This means:
+- Only the API Agent's public origin (`:8080`) needs to be reachable from the dashboard. The backend can sit on a private/locked-down port.
+- Backend CORS (`CORS_ORIGINS`) becomes irrelevant to the edge — only the agent's CORS matters for the browser.
+
+### The `/api/*` proxy (agent)
+
+Implemented in `api_agent/routes/proxy.py`. Behavior:
+
+| Aspect | Detail |
+|--------|--------|
+| **Route** | `/api/{path:path}` on the agent (`:8080`) — accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` |
+| **Upstream** | `BACKEND_BASE_URL/api/{path}` via `httpx.AsyncClient` |
+| **Headers forwarded** | All request headers except hop-by-hop (`host`, `content-length`, `connection`, `keep-alive`, `transfer-encoding`, `te`, `upgrade`, `proxy-authorization`, `proxy-authenticate`, `trailer`, `content-encoding`). The browser's `Authorization: Bearer <JWT>` is forwarded unchanged. |
+| **Body / method / query string** | Preserved verbatim. |
+| **Response** | Status code, body, and headers (minus hop-by-hop) returned to the browser as-is. |
+| **`/api/verify/*`** | Returned as **404** at the proxy, never reaches backend. Agent still calls these itself via `services/backend_client.py` using `X-API-Key` (unchanged). |
+| **Timeouts** | `BACKEND_HTTP_TIMEOUT_SEC` (default 25s). On transport error → 502. |
+| **Auth semantics** | Transparent: the backend's `GateAuthMiddleware` validates the forwarded JWT exactly as before. Per-user RBAC (`admin` / `viewer`) is preserved. The proxy does **not** swap JWT for `X-API-Key`. |
 
 ---
 
@@ -262,11 +296,12 @@ Backend (`backend-service/`) creates alerts on verification failures. Types incl
 
 1. **RFID is unidirectional** — Edge never pulls business data from the API Agent; only HTTP POST `{ rfid_tag }` to ingest.
 2. **Backend is remote** — Barricade `.env` points `BACKEND_BASE_URL` at cloud or localhost for dev.
-3. **API Agent orchestrates** — WebSocket to dashboard; HTTP to ANPR and backend; health poll for `backend_health`.
-4. **ANPR** — `POST /capture` for verification; MJPEG `video_feed` for preview.
-5. **Mock vs live** — `simulate` is timed mock; real RFID uses backend + ANPR pipeline. **`App.jsx`** can use local demo timers when offline; **`AppAgent`** requires the API agent for live flow.
-6. **Open Automatically** — Enforced in **reducer** and on **API agent** (`auto_open_after_verify`).
-7. **Operator / admin login** — When `VITE_BACKEND_URL` is set, dashboard uses **JWT** via `POST /api/auth/login` (see `dashboard_service/CONTEXT.MD`). Demo mode without backend URL uses legacy mock auth.
+3. **API Agent orchestrates and fronts the backend** — WebSocket to dashboard; HTTP to ANPR; `X-API-Key` to backend `/api/verify/*`; pass-through proxy at `/api/{path:path}` for browser-driven CRUD + JWT login; health poll for `backend_health`.
+4. **Dashboard is single-ingress (2026-04)** — The browser talks only to the agent. `VITE_BACKEND_URL` is the **agent** origin, not the backend. The proxy forwards the `Authorization: Bearer <JWT>` unchanged, so backend JWT auth + RBAC are preserved per user. `/api/verify/*` is blocked at the proxy (agent-internal only).
+5. **ANPR** — `POST /capture` for verification; MJPEG `video_feed` for preview.
+6. **Mock vs live** — `simulate` is timed mock; real RFID uses backend + ANPR pipeline. **`App.jsx`** can use local demo timers when offline; **`AppAgent`** requires the API agent for live flow.
+7. **Open Automatically** — Enforced in **reducer** and on **API agent** (`auto_open_after_verify`).
+8. **Operator / admin login** — When `VITE_BACKEND_URL` is set, dashboard uses **JWT** via `POST /api/auth/login` **through the agent proxy** (see `dashboard_service/CONTEXT.MD`). Demo mode without backend URL uses legacy mock auth.
 
 ---
 
@@ -283,8 +318,9 @@ barricade-service/
 │   └── README.md
 ├── api_agent/
 │   ├── core/               # events.py, connection.py
-│   ├── routes/             # root, health, rfid_scan, ws
-│   ├── services/           # verification.py, session.py
+│   ├── routes/             # root, health, rfid_scan, ws, config, proxy
+│   ├── services/           # verification.py, session.py, backend_client.py,
+│   │                       # backend_health.py
 │   ├── config.py
 │   ├── logging_config.py
 │   ├── app.py
